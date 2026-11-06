@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Keel" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#101820</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+    <string name="accessibility_description">Shows the pause screen when an app or surface you chose opens. Keel reads app names and view IDs only, never what is on screen, and nothing leaves this phone.</string>
+</resources>

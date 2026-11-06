@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "youtube_shorts",
+      "package": "com.google.android.youtube",
+      "anyViewIds": [
+        "com.google.android.youtube:id/reel_recycler",
+        "com.google.android.youtube:id/reel_player_page_container"
+      ],
+      "testedOn": "YouTube 21.43.523"
+    },
+    {
+      "id": "instagram_reels",
+      "package": "com.instagram.android",
+      "anyViewIds": []
+    }
+  ]
+}

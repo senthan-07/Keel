@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "surface:youtube_shorts",
+      "label": "YouTube Shorts",
+      "package": "com.google.android.youtube",
+      "anyViewIds": [
+        "com.google.android.youtube:id/reel_recycler",
+        "com.google.android.youtube:id/reel_player_page_container"
+      ],
+      "testedOnVersion": "21.43.523"
+    }
+  ]
+}
