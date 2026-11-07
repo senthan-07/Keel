@@ -304,3 +304,10 @@ The owner chose to build Keel as a personal project for their Samsung phone for 
 - **Kept:** local-only data, no `INTERNET` permission, and every behaviour rule in this plan.
 
 **Phase 1 status (2026-11-06):** first version built and passing on the Samsung with test data, see `results/PHASE1.md`. The 4-week personal trial hasn't started.
+
+## Scope decision: finance is optional and typed by hand (2026-11-07)
+
+Keel never asks for bank data. Finance plans are optional, and people simply type what they want to track, such as a savings goal and how much is saved so far. This overrides the earlier plan where they differ:
+
+- **Dropped:** bank CSV, OFX and QIF import, SMS and notification parsing, Account Aggregator, merchant categories, and the budget-review unlock.
+- **Kept:** savings goals, simple budgets and optional money plans, shown with their real state, and payday prompts that name the goal.

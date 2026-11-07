@@ -31,6 +31,7 @@ class PauseOverlay(
     private val windowType: Int,
     private val delaySeconds: Int,
     private val appLabel: String,
+    private val headline: String?,
     private val suggestion: PauseSuggestion?,
     private val onChoice: (Choice, String?) -> Unit,
 ) {
@@ -89,7 +90,8 @@ class PauseOverlay(
     private fun renderChoices(layout: LinearLayout) {
         layout.removeAllViews()
         layout.addView(text("Pause", 34f, bold = true))
-        layout.addView(text("You were opening $appLabel.", 15f, MUTED, bottom = 28))
+        layout.addView(text("You were opening $appLabel.", 15f, MUTED, bottom = if (headline == null) 28 else 10))
+        headline?.let { layout.addView(text(it, 16f, ACCENT, bottom = 28)) }
         if (suggestion != null) {
             val minutes = suggestion.estimateMinutes?.let { " ($it min)" }.orEmpty()
             layout.addView(text("Next step: ${suggestion.title}$minutes", 19f))

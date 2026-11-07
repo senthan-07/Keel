@@ -80,3 +80,22 @@ Run on the separate "Keel check" app with dummy data, never on the real Keel.
 | Delete all my Keel data | Needs DELETE typed exactly; Cancel keeps data; afterwards Keel returns to its first screen, even after a restart, and backup files remain |
 
 **Not tested:** Manage on the other three permissions (usage access, Accessibility and notifications, which open different Settings screens), and whole-app or Reels pausing for Instagram, which isn't installed. Reels-only pausing has no rule yet. Android only lets Keel list and delete backups from its current install, so older ones need the Files app to delete, though Restore can still open them.
+
+## Modes: time limit, task-locked and Sprint (2026-11-07)
+
+Run on the separate "Keel check" app with dummy data, with Calculator and Clock as test targets.
+
+| Check | Result |
+|---|---|
+| Rule unit tests | 55 of 55 pass |
+| Upgrade from the previous database format | Goal, task and rules survive; rules stay plain pauses |
+| Backup from the previous format | Restores into the new version |
+| Task-locked with a task left | Paused, with the reason and a 60-second countdown |
+| Task-locked with the list finished | Opens freely |
+| Time limit of 5 minutes on Clock | Free at first, paused at about 5 minutes |
+| New rule, first 10 minutes | Changes apply straight away |
+| Older rule, loosening | Deferred to next Monday |
+| Sprint | Pauses even with a finished list; ending early waits until Monday |
+| Shorts-only blocking on the new code | 5 of 5, none on the home tab |
+
+**Not tested:** the empty-list and usage-unavailable cases on a phone (unit tests only), and a limit crossing midnight. Time from a session that began before midnight isn't counted towards the new day. Time limits apply to whole apps only, because time per surface can't be measured.

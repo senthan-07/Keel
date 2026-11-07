@@ -40,10 +40,15 @@ import dev.keel.app.data.Rule
 import dev.keel.app.data.WeekUsage
 import dev.keel.app.pause.Permissions
 import dev.keel.app.pause.SurfaceRules
+import dev.keel.domain.EMERGENCY_DELAY_SECONDS
 import dev.keel.domain.Horizon
+import dev.keel.domain.NEW_RULE_GRACE_MILLIS
+import dev.keel.domain.RuleMode
 import dev.keel.domain.RuleSetting
 import dev.keel.domain.WeekStats
 import dev.keel.domain.daysDoneInLast30
+import dev.keel.domain.endSprintEarly
+import dev.keel.domain.startSprint
 import dev.keel.domain.reviewWeekDue
 import dev.keel.domain.weekStart
 import dev.keel.domain.weekStats
@@ -55,6 +60,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private val DELAYS = listOf(5, 10, 20, 30, 60)
+private val LIMITS = listOf(5, 15, 30, 60, 120)
+private val SPRINT_DAYS = listOf(1, 7, 14, 21)
 
 @Composable
 fun RulesScreen(model: AppModel) {
@@ -63,6 +70,7 @@ fun RulesScreen(model: AppModel) {
     var adding by remember { mutableStateOf(false) }
     Page("Rules", "Tightening applies now. Loosening waits until next Monday.") {
         val loaded = rules ?: return@Page
+        SprintPanel(model)
         loaded.forEach { RuleCard(model, it) }
         OutlinedButton({ adding = true }, Modifier.fillMaxWidth()) { Text("Add apps") }
     }
@@ -82,33 +90,124 @@ fun RulesScreen(model: AppModel) {
     }
 }
 
+private fun describe(setting: RuleSetting): String = when {
+    !setting.enabled -> "Off"
+    setting.mode == RuleMode.LIMIT -> "Free for ${setting.dailyLimitMinutes} min a day, then a pause"
+    setting.mode == RuleMode.TASK_LOCK -> "Locked until today's list is done"
+    else -> "Pause for ${setting.delaySeconds} seconds"
+}
+
 @Composable
 private fun RuleCard(model: AppModel, rule: Rule) {
     val current = rule.state.current
+    val modes = if (rule.kind == "surface") RuleMode.entries.filter { it != RuleMode.LIMIT } else RuleMode.entries
     Panel {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(rule.label, style = MaterialTheme.typography.titleMedium)
-                Muted(if (current.enabled) "Pause for ${current.delaySeconds} seconds" else "Off")
+                Muted(describe(current))
             }
             Switch(current.enabled, { on -> model.act { changeRule(rule, current.copy(enabled = on)) } })
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            DELAYS.forEach { delay ->
+            modes.forEach { mode ->
                 FilterChip(
-                    selected = delay == current.delaySeconds,
-                    onClick = { model.act { changeRule(rule, current.copy(delaySeconds = delay)) } },
-                    label = { Text("${delay}s", maxLines = 1) },
+                    selected = mode == current.mode,
+                    onClick = { model.act { changeRule(rule, current.copy(mode = mode)) } },
+                    label = { Text(mode.label, maxLines = 1) },
                 )
             }
+        }
+        when (current.mode) {
+            RuleMode.LIMIT -> {
+                Muted("Minutes a day")
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    LIMITS.forEach { minutes ->
+                        FilterChip(
+                            selected = minutes == current.dailyLimitMinutes,
+                            onClick = { model.act { changeRule(rule, current.copy(dailyLimitMinutes = minutes)) } },
+                            label = { Text("$minutes", maxLines = 1) },
+                        )
+                    }
+                }
+            }
+            RuleMode.PAUSE -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                DELAYS.forEach { delay ->
+                    FilterChip(
+                        selected = delay == current.delaySeconds,
+                        onClick = { model.act { changeRule(rule, current.copy(delaySeconds = delay)) } },
+                        label = { Text("${delay}s", maxLines = 1) },
+                    )
+                }
+            }
+            RuleMode.TASK_LOCK -> Muted("You can still get through after a $EMERGENCY_DELAY_SECONDS-second wait.")
+        }
+        if (System.currentTimeMillis() - rule.createdAt < NEW_RULE_GRACE_MILLIS) {
+            Muted("New rule: changes apply straight away for the first 10 minutes.")
         }
         val pending = rule.state.pending
         val at = rule.state.pendingAt
         if (pending != null && at != null) {
-            val day = Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("EEEE d MMM"))
-            val what = if (pending.enabled) "Pause drops to ${pending.delaySeconds} seconds" else "This rule turns off"
-            Text("$what on $day.", color = MaterialTheme.colorScheme.primary)
+            Text("Changes to \"${describe(pending)}\" on ${dayName(at)}.", color = MaterialTheme.colorScheme.primary)
         }
+    }
+}
+
+private fun dayName(at: Long): String =
+    Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("EEEE d MMM"))
+
+/** Stricter for a set time: every rule that's on pauses for the longest wait, and nothing is free. */
+@Composable
+private fun SprintPanel(model: AppModel) {
+    val until by loadState(model) { sprintUntil() ?: 0L }
+    var startDays by remember { mutableStateOf<Int?>(null) }
+    var ending by remember { mutableStateOf(false) }
+    val now = System.currentTimeMillis()
+    val zone = ZoneId.systemDefault()
+    val active = (until ?: 0L) > now
+    Panel {
+        Text("Sprint", style = MaterialTheme.typography.titleMedium)
+        if (active) {
+            Text("Running until ${dayName(until ?: now)}.", color = MaterialTheme.colorScheme.primary)
+            Muted("Every rule that's on waits $EMERGENCY_DELAY_SECONDS seconds, including time limits and finished lists.")
+            OutlinedButton({ ending = true }, Modifier.fillMaxWidth()) { Text("End early") }
+        } else {
+            Muted("Make every rule that's on stricter for a set time. You can still get through after a $EMERGENCY_DELAY_SECONDS-second wait.")
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            SPRINT_DAYS.forEach { days ->
+                FilterChip(selected = false, onClick = { startDays = days }, label = { Text(if (days == 1) "1 day" else "$days days", maxLines = 1) })
+            }
+        }
+    }
+    startDays?.let { days ->
+        AlertDialog(
+            onDismissRequest = { startDays = null },
+            title = { Text("Start a Sprint for ${if (days == 1) "1 day" else "$days days"}?") },
+            text = { Text("It starts now. Ending it early only takes effect next Monday, because a commitment is easiest to break on impulse.") },
+            confirmButton = {
+                TextButton({
+                    startDays = null
+                    model.act { setSprintUntil(startSprint(sprintUntil(), days, System.currentTimeMillis())) }
+                }) { Text("Start") }
+            },
+            dismissButton = { TextButton({ startDays = null }) { Text("Cancel") } },
+        )
+    }
+    if (ending) {
+        val endsAt = endSprintEarly(until ?: now, now, zone)
+        AlertDialog(
+            onDismissRequest = { ending = false },
+            title = { Text("End this Sprint early?") },
+            text = { Text("It will end on ${dayName(endsAt)}.") },
+            confirmButton = {
+                TextButton({
+                    ending = false
+                    model.act { setSprintUntil(endsAt) }
+                }) { Text("End then") }
+            },
+            dismissButton = { TextButton({ ending = false }) { Text("Keep going") } },
+        )
     }
 }
 

@@ -6,7 +6,14 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.TemporalAdjusters
 
-data class RuleSetting(val enabled: Boolean, val delaySeconds: Int)
+data class RuleSetting(
+    val enabled: Boolean,
+    val delaySeconds: Int,
+    val mode: RuleMode = RuleMode.PAUSE,
+    val dailyLimitMinutes: Int = 30,
+)
+
+const val NEW_RULE_GRACE_MILLIS = 10 * 60_000L
 
 data class RuleState(
     val current: RuleSetting,
@@ -17,7 +24,9 @@ data class RuleState(
 fun isLoosening(from: RuleSetting, to: RuleSetting): Boolean = when {
     !from.enabled -> false
     !to.enabled -> true
-    else -> to.delaySeconds < from.delaySeconds
+    to.mode.ordinal != from.mode.ordinal -> to.mode.ordinal < from.mode.ordinal
+    else -> to.delaySeconds < from.delaySeconds ||
+        (to.mode == RuleMode.LIMIT && to.dailyLimitMinutes > from.dailyLimitMinutes)
 }
 
 /** The start of next Monday, local time. */
@@ -29,10 +38,19 @@ fun nextWeekStart(now: Long, zone: ZoneId): Long =
 /**
  * Commitment rule: tightening applies at once, loosening waits until next week.
  * Any new request replaces a pending one, so a rule can't be loosened sooner by asking twice.
+ * A rule just created has no commitment behind it yet, so it can be set up freely during [createdAt]'s
+ * grace period.
  */
-fun requestChange(state: RuleState, requested: RuleSetting, now: Long, zone: ZoneId): RuleState {
+fun requestChange(
+    state: RuleState,
+    requested: RuleSetting,
+    now: Long,
+    zone: ZoneId,
+    createdAt: Long = 0,
+): RuleState {
     val live = effective(state, now)
-    return if (isLoosening(live.current, requested)) {
+    val settingUp = now - createdAt < NEW_RULE_GRACE_MILLIS
+    return if (!settingUp && isLoosening(live.current, requested)) {
         live.copy(pending = requested, pendingAt = nextWeekStart(now, zone))
     } else {
         RuleState(requested)

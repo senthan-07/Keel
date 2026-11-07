@@ -1,5 +1,7 @@
 package dev.keel.app.pause
 
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -11,8 +13,16 @@ import android.view.KeyEvent
 import dev.keel.app.KeelApp
 import dev.keel.app.ui.MainActivity
 import dev.keel.domain.Choice
+import dev.keel.domain.EntryContext
+import dev.keel.domain.EntryDecision
 import dev.keel.domain.PauseSuggestion
+import dev.keel.domain.RuleMode
+import dev.keel.domain.RuleSetting
+import dev.keel.domain.UsageEvent
+import dev.keel.domain.decideEntry
+import dev.keel.domain.foregroundMillis
 import java.time.LocalDate
+import java.time.ZoneId
 
 /**
  * Decides when the pause screen shows. Shared by the Accessibility and fallback triggers.
@@ -32,6 +42,8 @@ class PauseController(
     private var overlayTarget: String? = null
     private var overlaySuggestion: PauseSuggestion? = null
     private val allowedUntil = mutableMapOf<String, Long>()
+    private var limitTarget: String? = null
+    private var limitCheckAt = 0L
 
     private val recheck = object : Runnable {
         override fun run() {
@@ -49,23 +61,78 @@ class PauseController(
         val target = overlayTarget
         if (target != null && target == pkg) return
         if (target != null && !target.startsWith(SURFACE_PREFIX)) hide(Choice.LEFT)
-        repo.activeRule(pkg)?.let { show(pkg, appLabel(pkg), it.delaySeconds, isSurface = false) }
+        repo.activeRule(pkg)?.let { enter(pkg, appLabel(pkg), it, isSurface = false) }
     }
 
     /** Surface rules, such as Shorts. Called with whether the rule currently matches. */
     fun onSurface(ruleId: String, label: String, visible: Boolean) {
         if (visible) {
-            repo.activeRule(ruleId)?.let { show(ruleId, label, it.delaySeconds, isSurface = true) }
+            repo.activeRule(ruleId)?.let { enter(ruleId, label, it, isSurface = true) }
         } else if (overlayTarget == ruleId) {
             hide(Choice.LEFT)
         }
     }
 
-    private fun show(target: String, label: String, delaySeconds: Int, isSurface: Boolean) {
+    /** Applies the rule's mode, then either lets the app open or shows the pause screen. */
+    private fun enter(target: String, label: String, setting: RuleSetting, isSurface: Boolean) {
         if (overlay != null) return
-        if (SystemClock.elapsedRealtime() < (allowedUntil[target] ?: 0L)) return
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (nowElapsed < (allowedUntil[target] ?: 0L)) return
+        // Window events are frequent, so a running time limit isn't re-measured until it could be up.
+        if (limitTarget == target && nowElapsed < limitCheckAt) return
+        // Time per surface can't be measured, so surface rules are never time limits.
+        val rule = if (isSurface && setting.mode == RuleMode.LIMIT) setting.copy(mode = RuleMode.PAUSE) else setting
+        val (left, done) = repo.todayTaskCounts()
+        val decision = decideEntry(
+            rule,
+            EntryContext(
+                now = System.currentTimeMillis(),
+                sprintUntil = repo.sprintUntil(),
+                usedMillisToday = if (rule.mode == RuleMode.LIMIT) usedToday(target) else 0,
+                todayTasksLeft = left,
+                todayTasksDone = done,
+            ),
+        )
+        when (decision) {
+            is EntryDecision.Allow -> decision.recheckAfterMillis?.let { scheduleLimitCheck(target, it) }
+            is EntryDecision.Pause -> show(target, label, decision.delaySeconds, decision.headline, isSurface)
+        }
+    }
+
+    /** Pauses the app when its allowance runs out, if it's still in front by then. */
+    private fun scheduleLimitCheck(target: String, afterMillis: Long) {
+        handler.removeCallbacks(limitCheck)
+        limitTarget = target
+        limitCheckAt = SystemClock.elapsedRealtime() + afterMillis
+        handler.postDelayed(limitCheck, afterMillis)
+    }
+
+    private val limitCheck = Runnable {
+        val target = limitTarget ?: return@Runnable
+        limitTarget = null
+        if (overlay == null && isStillInFront(target)) onForeground(target)
+    }
+
+    private fun usedToday(pkg: String): Long? {
+        if (!Permissions.usage(context)) return null
+        val now = System.currentTimeMillis()
+        val midnight = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val events = context.getSystemService(UsageStatsManager::class.java).queryEvents(midnight, now)
+        val event = UsageEvents.Event()
+        val collected = mutableListOf<UsageEvent>()
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            when (event.eventType) {
+                UsageEvents.Event.ACTIVITY_RESUMED -> collected += UsageEvent(event.timeStamp, event.packageName, true)
+                UsageEvents.Event.ACTIVITY_PAUSED -> collected += UsageEvent(event.timeStamp, event.packageName, false)
+            }
+        }
+        return foregroundMillis(collected, pkg, now)
+    }
+
+    private fun show(target: String, label: String, delaySeconds: Int, headline: String?, isSurface: Boolean) {
         val suggestion = runCatching { repo.suggestion() }.getOrNull()
-        val view = PauseOverlay(context, windowType, delaySeconds, label, suggestion) { choice, reason ->
+        val view = PauseOverlay(context, windowType, delaySeconds, label, headline, suggestion) { choice, reason ->
             when (choice) {
                 Choice.OPEN -> allow(target)
                 Choice.DO_IT_NOW -> {

@@ -13,6 +13,7 @@ import dev.keel.domain.InterceptEvent
 import dev.keel.domain.PauseSuggestion
 import dev.keel.domain.PlanStep
 import dev.keel.domain.RankedGoal
+import dev.keel.domain.RuleMode
 import dev.keel.domain.RuleSetting
 import dev.keel.domain.RuleState
 import dev.keel.domain.Task
@@ -29,7 +30,13 @@ import org.json.JSONObject
 import java.time.LocalDate
 import java.time.ZoneId
 
-data class Rule(val target: String, val kind: String, val label: String, val state: RuleState)
+data class Rule(
+    val target: String,
+    val kind: String,
+    val label: String,
+    val state: RuleState,
+    val createdAt: Long = 0,
+)
 
 data class WeekUsage(val pkg: String, val minutes: Long)
 
@@ -51,8 +58,9 @@ class BackupContents private constructor(
             }
             if (root.optString("format") != "keel-export") throw BackupException("This backup's contents couldn't be read.")
             val version = root.optInt("schemaVersion", -1)
-            if (version != Repo.SCHEMA_VERSION) {
-                throw BackupException("This backup is from a different version of Keel (format $version), so it can't be restored here.")
+            // Older backups restore fine: columns added since then take their defaults.
+            if (version !in 1..Repo.SCHEMA_VERSION) {
+                throw BackupException("This backup is from a newer version of Keel (format $version), so update Keel first.")
             }
             val tables = root.optJSONObject("tables") ?: throw BackupException("This backup is incomplete.")
             for (table in Repo.TABLES) {
@@ -247,14 +255,14 @@ class Repo private constructor(private val db: SQLiteDatabase) {
     /** Adds a rule, which is always a tightening, so it applies at once. Existing ones are kept. */
     fun addRule(target: String, kind: String, label: String, delaySeconds: Int) {
         db.execSQL(
-            "INSERT OR IGNORE INTO rule(target, kind, label, enabled, delay_seconds) VALUES(?,?,?,1,?)",
-            arrayOf<Any>(target, kind, label, delaySeconds),
+            "INSERT OR IGNORE INTO rule(target, kind, label, enabled, delay_seconds, created_at) VALUES(?,?,?,1,?,?)",
+            arrayOf<Any>(target, kind, label, delaySeconds, System.currentTimeMillis()),
         )
     }
 
     /** Applies the commitment rule, and records the change so the review can show it. */
     fun changeRule(rule: Rule, requested: RuleSetting, now: Long = System.currentTimeMillis()): RuleState {
-        val next = requestChange(rule.state, requested, now, zone)
+        val next = requestChange(rule.state, requested, now, zone, rule.createdAt)
         saveState(rule.target, next)
         insert("commitment_change") {
             put("at", now)
@@ -263,6 +271,8 @@ class Repo private constructor(private val db: SQLiteDatabase) {
             put("from_delay", rule.state.current.delaySeconds)
             put("to_enabled", requested.enabled)
             put("to_delay", requested.delaySeconds)
+            put("to_mode", requested.mode.name)
+            put("to_limit", requested.dailyLimitMinutes)
             put("effective_at", next.pendingAt ?: now)
         }
         return next
@@ -270,16 +280,34 @@ class Repo private constructor(private val db: SQLiteDatabase) {
 
     private fun saveState(target: String, state: RuleState) {
         db.execSQL(
-            "UPDATE rule SET enabled=?, delay_seconds=?, pending_enabled=?, pending_delay=?, pending_at=? WHERE target=?",
+            "UPDATE rule SET enabled=?, delay_seconds=?, mode=?, daily_limit_min=?, " +
+                "pending_enabled=?, pending_delay=?, pending_mode=?, pending_limit=?, pending_at=? WHERE target=?",
             arrayOf<Any?>(
                 if (state.current.enabled) 1 else 0,
                 state.current.delaySeconds,
+                state.current.mode.name,
+                state.current.dailyLimitMinutes,
                 state.pending?.let { if (it.enabled) 1 else 0 },
                 state.pending?.delaySeconds,
+                state.pending?.mode?.name,
+                state.pending?.dailyLimitMinutes,
                 state.pendingAt,
                 target,
             ),
         )
+    }
+
+    // Sprint
+
+    fun sprintUntil(): Long? = setting(SPRINT_UNTIL)?.toLongOrNull()
+
+    fun setSprintUntil(until: Long) = setSetting(SPRINT_UNTIL, until.toString())
+
+    /** Today's list, as (left, done), which decides whether task-locked apps are open. */
+    fun todayTaskCounts(today: LocalDate = LocalDate.now()): Pair<Int, Int> {
+        val tasks = tasks(today)
+        val left = tasks.count { it.doneAt == null }
+        return left to tasks.size - left
     }
 
     // Pause events
@@ -505,14 +533,22 @@ class Repo private constructor(private val db: SQLiteDatabase) {
     private fun Cursor.toRule(): Rule {
         val pendingEnabled = longOrNull("pending_enabled")
         val pendingDelay = longOrNull("pending_delay")
+        val mode = RuleMode.valueOf(string("mode"))
+        val limit = long("daily_limit_min").toInt()
         return Rule(
             target = string("target"),
             kind = string("kind"),
             label = string("label"),
+            createdAt = long("created_at"),
             state = RuleState(
-                current = RuleSetting(long("enabled") == 1L, long("delay_seconds").toInt()),
+                current = RuleSetting(long("enabled") == 1L, long("delay_seconds").toInt(), mode, limit),
                 pending = if (pendingEnabled != null && pendingDelay != null) {
-                    RuleSetting(pendingEnabled == 1L, pendingDelay.toInt())
+                    RuleSetting(
+                        pendingEnabled == 1L,
+                        pendingDelay.toInt(),
+                        stringOrNull("pending_mode")?.let(RuleMode::valueOf) ?: mode,
+                        longOrNull("pending_limit")?.toInt() ?: limit,
+                    )
                 } else {
                     null
                 },
@@ -522,7 +558,8 @@ class Repo private constructor(private val db: SQLiteDatabase) {
     }
 
     companion object {
-        const val SCHEMA_VERSION = 1
+        const val SCHEMA_VERSION = 2
+        private const val SPRINT_UNTIL = "sprint_until"
         const val LAST_BACKUP = "last_backup_at"
         private const val BACKUP_PHRASE = "backup_phrase"
         val TABLES = listOf(
@@ -542,13 +579,25 @@ class Repo private constructor(private val db: SQLiteDatabase) {
             if (db.version >= SCHEMA_VERSION) return
             db.beginTransaction()
             try {
-                SCHEMA.forEach { db.execSQL(it) }
+                if (db.version < 1) SCHEMA.forEach { db.execSQL(it) }
+                if (db.version < 2) MODES_MIGRATION.forEach { db.execSQL(it) }
                 db.version = SCHEMA_VERSION
                 db.setTransactionSuccessful()
             } finally {
                 db.endTransaction()
             }
         }
+
+        /** Existing rules become plain pauses, so upgrading changes nothing until you choose a mode. */
+        private val MODES_MIGRATION = listOf(
+            "ALTER TABLE rule ADD COLUMN mode TEXT NOT NULL DEFAULT 'PAUSE'",
+            "ALTER TABLE rule ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE rule ADD COLUMN daily_limit_min INTEGER NOT NULL DEFAULT 30",
+            "ALTER TABLE rule ADD COLUMN pending_mode TEXT",
+            "ALTER TABLE rule ADD COLUMN pending_limit INTEGER",
+            "ALTER TABLE commitment_change ADD COLUMN to_mode TEXT",
+            "ALTER TABLE commitment_change ADD COLUMN to_limit INTEGER",
+        )
 
         private val SCHEMA = listOf(
             """CREATE TABLE goal(
