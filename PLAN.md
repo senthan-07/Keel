@@ -311,3 +311,9 @@ Keel never asks for bank data. Finance plans are optional, and people simply typ
 
 - **Dropped:** bank CSV, OFX and QIF import, SMS and notification parsing, Account Aggregator, merchant categories, and the budget-review unlock.
 - **Kept:** savings goals, simple budgets and optional money plans, shown with their real state, and payday prompts that name the goal.
+
+## Status: feature complete for personal use (2026-11-07)
+
+Built: pause and Shorts blocking, modes, Today, Horizons, imported plans, money goals, weekly check-in, time budgets, the time-to-money rule, the friction experiment, backup and restore, and the privacy panel.
+
+Decided against, or left out for now: bank import, budgets and payday prompts, Health Connect, AI, voice, sync and iPhone. Still to check through real use: restarting the phone, overnight use, battery drain, and the 4-week trial.

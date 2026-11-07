@@ -34,6 +34,7 @@ import dev.keel.app.data.Repo
 import dev.keel.domain.BackupException
 import dev.keel.domain.BackupFile
 import dev.keel.domain.RecoveryPhrase
+import dev.keel.domain.backupIsStale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -112,7 +113,11 @@ fun BackupSection(model: AppModel) {
         if (phrase == null) {
             PhraseSetup(model)
         } else {
-            Text(lastBackupLine(loaded.lastAt))
+            if (backupIsStale(loaded.lastAt, System.currentTimeMillis())) {
+                Text(lastBackupLine(loaded.lastAt) + " Back up soon, because nothing backs up automatically.", color = MaterialTheme.colorScheme.error)
+            } else {
+                Text(lastBackupLine(loaded.lastAt))
+            }
             Muted("Saved in Download/Keel. It stays if Keel is uninstalled, but not if this phone is lost or reset, so copy it elsewhere from time to time.")
             Button(
                 {

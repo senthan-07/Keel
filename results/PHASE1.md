@@ -121,3 +121,23 @@ Run on the separate "Keel check" app with made-up plan files. The parser was als
 | Uninstall, reinstall, restore | Plans and money goals came back |
 
 **Not tested:** a plan with hundreds of steps on the phone, a plan file imported by another person's phone, and the pause screen's speed with all 347 steps loaded. Simple budgets and payday prompts from the original plan aren't built. Android's file picker may not list folders copied over USB under its Downloads view, so a file may need to be found through the phone's internal storage.
+
+## Today from plans, check-in, time budgets and experiment (2026-11-07)
+
+Run on the separate "Keel check" app with made-up plans.
+
+| Check | Result |
+|---|---|
+| Rule unit tests | 86 of 86 pass |
+| Upgrade from the previous database format | Plans and goals kept |
+| Today, From your plans | Next steps from Active plans; Add moves one to Today and out of the suggestions |
+| Browse all plans | Library plans can be browsed, and a step added |
+| Weekly check-in | Saves and averages |
+| Time budget with an app | Measured from real usage: 5 h 28 min against 1 h |
+| Time-to-money rule | Correct amount; can be added to Today once a week |
+| Experiment | Starts next Monday, can be stopped; on and off weeks covered by unit tests only |
+| Manage on usage access and notifications | Opens the right Settings screen; Accessibility wasn't tried |
+| Backup and restore | Check-in, budget, tasks and plans came back |
+| App info on the phone | "No data used" for mobile data |
+
+**Not tested:** a full on and off week of the experiment, restarting the phone, overnight use, and battery drain, because the phone had only been off its charger for about a minute.

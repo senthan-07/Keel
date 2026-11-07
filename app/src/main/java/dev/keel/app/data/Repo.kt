@@ -5,6 +5,9 @@ import android.content.Context
 import android.database.Cursor
 import dev.keel.domain.BackupException
 import dev.keel.domain.ExistingItem
+import dev.keel.domain.ExperimentWeek
+import dev.keel.domain.TimeEnvelope
+import dev.keel.domain.WeeklyCheck
 import dev.keel.domain.PlanCategory
 import dev.keel.domain.PlanItem
 import dev.keel.domain.guessCategory
@@ -474,6 +477,88 @@ class Repo private constructor(private val db: SQLiteDatabase) {
         }
     }
 
+    // Today from plans
+
+    /** Steps that already have an unfinished task, so they aren't suggested twice. */
+    fun openTaskStepIds(): Set<Long> =
+        list("SELECT step_id FROM task WHERE done_at IS NULL AND step_id IS NOT NULL") { it.getLong(0) }.toSet()
+
+    // Weekly check-in
+
+    fun saveWeeklyCheck(check: WeeklyCheck, now: Long = System.currentTimeMillis()) {
+        db.execSQL(
+            "INSERT OR REPLACE INTO weekly_check(week_start, sleep, exercise, mood, note, saved_at) VALUES(?,?,?,?,?,?)",
+            arrayOf<Any>(check.week.toString(), check.sleep, check.exercise, check.mood, check.note, now),
+        )
+    }
+
+    fun weeklyChecks(): List<WeeklyCheck> = list("SELECT week_start, sleep, exercise, mood, note FROM weekly_check") {
+        WeeklyCheck(LocalDate.parse(it.getString(0)), it.getInt(1), it.getInt(2), it.getInt(3), it.getString(4))
+    }
+
+    // Time budgets
+
+    fun addTimeEnvelope(name: String, minutesPerWeek: Int, apps: List<String>, perMinutes: Int?, amount: Long?, payTo: String?, now: Long = System.currentTimeMillis()) {
+        insert("time_envelope") {
+            put("name", name)
+            put("minutes_per_week", minutesPerWeek)
+            put("apps", apps.joinToString(","))
+            put("per_minutes", perMinutes)
+            put("amount", amount)
+            put("pay_to", payTo)
+            put("created_at", now)
+        }
+    }
+
+    fun timeEnvelopes(): List<TimeEnvelope> = list(
+        "SELECT id, name, minutes_per_week, apps, per_minutes, amount, pay_to FROM time_envelope ORDER BY created_at",
+    ) {
+        TimeEnvelope(
+            it.getLong(0),
+            it.getString(1),
+            it.getInt(2),
+            it.getString(3).split(",").filter(String::isNotEmpty),
+            if (it.isNull(4)) null else it.getInt(4),
+            if (it.isNull(5)) null else it.getLong(5),
+            if (it.isNull(6)) null else it.getString(6),
+        )
+    }
+
+    fun deleteTimeEnvelope(id: Long) {
+        db.execSQL("DELETE FROM time_envelope WHERE id=?", arrayOf<Any>(id))
+    }
+
+    /** Envelopes whose rule was already added to Today this week, so it can't be added twice. */
+    fun exchangeRecorded(week: LocalDate): Set<Long> {
+        val prefix = "exchange_${week}_"
+        return list("SELECT key FROM setting WHERE key LIKE ?", "$prefix%") { it.getString(0).removePrefix(prefix).toLong() }.toSet()
+    }
+
+    fun recordExchange(week: LocalDate, envelopeId: Long) = setSetting("exchange_${week}_$envelopeId", "1")
+
+    // Personal experiment
+
+    fun experimentStart(): LocalDate? = setting(EXPERIMENT_START)?.ifEmpty { null }?.let(LocalDate::parse)
+
+    fun startExperiment(start: LocalDate) = setSetting(EXPERIMENT_START, start.toString())
+
+    fun stopExperiment() = setSetting(EXPERIMENT_START, "")
+
+    /** Time in apps with a whole-app rule, for each finished week of the experiment. */
+    fun experimentWeeks(start: LocalDate, today: LocalDate): List<ExperimentWeek> {
+        val zone = zone
+        val targets = rules().filter { it.kind == "app" }.map { it.target }.toSet()
+        val weeks = mutableListOf<ExperimentWeek>()
+        var week = start
+        while (week.plusWeeks(1) <= today) {
+            val from = week.atStartOfDay(zone).toInstant().toEpochMilli()
+            val to = week.plusWeeks(1).atStartOfDay(zone).toInstant().toEpochMilli()
+            weeks += ExperimentWeek(week, usage(from, to).filter { it.pkg in targets }.sumOf { it.minutes })
+            week = week.plusWeeks(1)
+        }
+        return weeks
+    }
+
     // Sprint
 
     fun sprintUntil(): Long? = setting(SPRINT_UNTIL)?.toLongOrNull()
@@ -735,7 +820,8 @@ class Repo private constructor(private val db: SQLiteDatabase) {
     }
 
     companion object {
-        const val SCHEMA_VERSION = 3
+        const val SCHEMA_VERSION = 4
+        private const val EXPERIMENT_START = "experiment_start"
         private const val SPRINT_UNTIL = "sprint_until"
         const val LAST_BACKUP = "last_backup_at"
         private const val BACKUP_PHRASE = "backup_phrase"
@@ -743,7 +829,7 @@ class Repo private constructor(private val db: SQLiteDatabase) {
             "goal", "goal_touch", "plan_step", "task", "rule", "commitment_change",
             "intercept_event", "usage_session", "review", "setting",
         )
-        val TABLES = ORIGINAL_TABLES + listOf("plan_doc", "money_goal", "money_entry")
+        val TABLES = ORIGINAL_TABLES + listOf("plan_doc", "money_goal", "money_entry", "weekly_check", "time_envelope")
 
         fun open(context: Context, key: String): Repo {
             System.loadLibrary("sqlcipher")
@@ -760,12 +846,22 @@ class Repo private constructor(private val db: SQLiteDatabase) {
                 if (db.version < 1) SCHEMA.forEach { db.execSQL(it) }
                 if (db.version < 2) MODES_MIGRATION.forEach { db.execSQL(it) }
                 if (db.version < 3) PLANS_MIGRATION.forEach { db.execSQL(it) }
+                if (db.version < 4) INSIGHTS_MIGRATION.forEach { db.execSQL(it) }
                 db.version = SCHEMA_VERSION
                 db.setTransactionSuccessful()
             } finally {
                 db.endTransaction()
             }
         }
+
+        private val INSIGHTS_MIGRATION = listOf(
+            """CREATE TABLE weekly_check(
+                week_start TEXT PRIMARY KEY, sleep INTEGER NOT NULL, exercise INTEGER NOT NULL,
+                mood INTEGER NOT NULL, note TEXT NOT NULL, saved_at INTEGER NOT NULL)""",
+            """CREATE TABLE time_envelope(
+                id INTEGER PRIMARY KEY, name TEXT NOT NULL, minutes_per_week INTEGER NOT NULL, apps TEXT NOT NULL,
+                per_minutes INTEGER, amount INTEGER, pay_to TEXT, created_at INTEGER NOT NULL)""",
+        )
 
         private val PLANS_MIGRATION = listOf(
             """CREATE TABLE plan_doc(

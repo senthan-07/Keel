@@ -330,7 +330,7 @@ fun TodayScreen(model: AppModel) {
         val loaded = data ?: return@Page
         // Overdue items count, so "done" is only ever true.
         when (val state = dayState(loaded.today + loaded.overdue)) {
-            DayState.Empty -> Muted("Nothing planned. Add what matters, or pull a step from Horizons.")
+            DayState.Empty -> Muted("Nothing planned yet. Add what matters, or pick from your plans below.")
             is DayState.InProgress -> Muted("${state.left} left, ${state.done} done.")
             is DayState.Finished -> Panel {
                 Text("You're done for today.", style = MaterialTheme.typography.titleLarge)
@@ -354,6 +354,7 @@ fun TodayScreen(model: AppModel) {
             Muted("Move these to today, or let them go.")
             loaded.overdue.forEach { TaskRow(model, it, date) }
         }
+        PlanPicksSection(model, date)
     }
 }
 

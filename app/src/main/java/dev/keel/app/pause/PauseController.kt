@@ -20,6 +20,7 @@ import dev.keel.domain.RuleMode
 import dev.keel.domain.RuleSetting
 import dev.keel.domain.UsageEvent
 import dev.keel.domain.decideEntry
+import dev.keel.domain.experimentWeekIsOff
 import dev.keel.domain.foregroundMillis
 import java.time.LocalDate
 import java.time.ZoneId
@@ -91,6 +92,7 @@ class PauseController(
                 usedMillisToday = if (rule.mode == RuleMode.LIMIT) usedToday(target) else 0,
                 todayTasksLeft = left,
                 todayTasksDone = done,
+                frictionOffWeek = experimentWeekIsOff(repo.experimentStart(), LocalDate.now()),
             ),
         )
         when (decision) {

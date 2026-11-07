@@ -25,6 +25,13 @@ scripts/check_no_internet.sh  # Fails if the APK requests network access
 - `app/`: encrypted storage (`data/`), pause system (`pause/`), screens (`ui/`)
 - `spike/`: throwaway Phase 0 test app
 
+## Features
+
+- **Rules:** pause, time limit, task-locked and Sprint, with commitment rules, for whole apps or YouTube Shorts
+- **Plans:** Horizons, Today, imported Markdown plans, typed money goals
+- **Review:** abandoned opens, weekly check-in, time budgets, a self-set time-to-money rule, and an on and off experiment
+- **Your data:** live privacy check, backup, restore, export and delete
+
 ## Data
 
 Everything is in a SQLCipher database. Its key is wrapped by the Android Keystore, so the database file can't be moved to another phone.

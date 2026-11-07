@@ -52,7 +52,7 @@ import java.util.Locale
 
 private const val MAX_PLAN_BYTES = 2 * 1024 * 1024
 
-private fun money(amount: Long): String = NumberFormat.getCurrencyInstance(Locale.getDefault()).apply {
+fun money(amount: Long): String = NumberFormat.getCurrencyInstance(Locale.getDefault()).apply {
     maximumFractionDigits = 0
 }.format(amount)
 

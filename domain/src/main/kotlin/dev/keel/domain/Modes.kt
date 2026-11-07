@@ -27,6 +27,8 @@ data class EntryContext(
     val usedMillisToday: Long?,
     val todayTasksLeft: Int,
     val todayTasksDone: Int,
+    /** A week of the personal experiment when plain pauses are switched off for comparison. */
+    val frictionOffWeek: Boolean = false,
 )
 
 /**
@@ -43,7 +45,7 @@ fun decideEntry(setting: RuleSetting, context: EntryContext): EntryDecision {
         )
     }
     return when (setting.mode) {
-        RuleMode.PAUSE -> EntryDecision.Pause(setting.delaySeconds)
+        RuleMode.PAUSE -> if (context.frictionOffWeek) EntryDecision.Allow() else EntryDecision.Pause(setting.delaySeconds)
         RuleMode.LIMIT -> {
             val used = context.usedMillisToday
                 // Without usage data the limit can't be measured, so fail towards pausing.

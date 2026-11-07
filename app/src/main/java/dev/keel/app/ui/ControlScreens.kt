@@ -345,6 +345,9 @@ fun ReviewScreen(model: AppModel) {
             loaded.usage.filter { it.pkg != home && it.pkg != context.packageName }.take(5)
                 .forEach { Muted("${appLabel(context, it.pkg)}: ${it.minutes} min") }
         }
+        CheckInPanel(model, weekStart(LocalDate.now()))
+        TimeBudgetsSection(model, loaded.week)
+        ExperimentSection(model)
         if (loaded.due) {
             SectionTitle("One rule to change")
             OutlinedTextField(ruleChange, { ruleChange = it }, label = { Text("What will you change, if anything?") }, modifier = Modifier.fillMaxWidth())
