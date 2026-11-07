@@ -99,3 +99,25 @@ Run on the separate "Keel check" app with dummy data, with Calculator and Clock 
 | Shorts-only blocking on the new code | 5 of 5, none on the home tab |
 
 **Not tested:** the empty-list and usage-unavailable cases on a phone (unit tests only), and a limit crossing midnight. Time from a session that began before midnight isn't counted towards the new day. Time limits apply to whole apps only, because time per surface can't be measured.
+
+## Plans and money goals (2026-11-07)
+
+Run on the separate "Keel check" app with made-up plan files. The parser was also checked on real files on the computer, reporting counts only.
+
+| Check | Result |
+|---|---|
+| Rule unit tests | 72 of 72 pass |
+| Parser on 17 real Markdown files | 347 steps, no leftover Markdown, and export then re-read matched on every file |
+| Upgrade from the previous database format, and its backup | Data kept; backup restores |
+| Import two files at once | Both imported, one with no steps kept as a reading plan |
+| Active switch | The plan's next step appears on the pause screen |
+| Very long step | Capped at 4 lines, with buttons on screen |
+| Re-import a changed file | 1 new, 1 removed, ticks kept, title updated |
+| Export with ticks, and clean copy | Correct ticks; rest of the file unchanged |
+| Export all to a folder | All plans written |
+| Paste text | Saved as a plan |
+| Delete a plan | Warning, then removed |
+| Money goal | Local currency format; latest amount, percent and last update shown |
+| Uninstall, reinstall, restore | Plans and money goals came back |
+
+**Not tested:** a plan with hundreds of steps on the phone, a plan file imported by another person's phone, and the pause screen's speed with all 347 steps loaded. Simple budgets and payday prompts from the original plan aren't built. Android's file picker may not list folders copied over USB under its Downloads view, so a file may need to be found through the phone's internal storage.

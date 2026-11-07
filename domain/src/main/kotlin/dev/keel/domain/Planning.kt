@@ -13,7 +13,8 @@ enum class Horizon(val label: String) {
     val coolsOff get() = this == LIFE || this == YEAR
 }
 
-enum class GoalStatus { COOLING, ACTIVE, DONE, KILLED }
+/** LIBRARY is an imported plan you aren't working on yet, so it stays out of rankings and pauses. */
+enum class GoalStatus { COOLING, ACTIVE, DONE, KILLED, LIBRARY }
 
 data class Goal(
     val id: Long,

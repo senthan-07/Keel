@@ -31,6 +31,12 @@ Everything is in a SQLCipher database. Its key is wrapped by the Android Keystor
 
 Under Your data, **Back up to this phone** writes an encrypted `.keelbak` file to `Download/Keel` with no storage permission, and reads it back to check it. **Choose another location** saves anywhere the file picker offers. Backups can be deleted individually, and **Delete all my Keel data** erases the database contents after a typed confirmation. Only your 25-character recovery phrase can open it, and it can't be recovered if lost. **Restore from a backup** replaces everything, and is also offered on Keel's first screen after a reinstall. The readable JSON export can't be restored.
 
+## Plans
+
+Keel is generic and ships with no plans. Under Horizons, **Plans and money** imports any Markdown file or pasted text, and every `[ ]` line becomes a step, including ones in table rows. Importing a changed file with the same name keeps your ticks. Plans start in a library, and switching one to Active feeds Horizons and the pause screen.
+
+To share a plan, export it. The file is ordinary Markdown, with your ticks or a clean copy, and anyone can import it. **Don't add personal plans to this repo.**
+
 ## Testing
 
 The `check` build is a separate "Keel check" app with its own data, so tests can't touch your real Keel:

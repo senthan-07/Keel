@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import dev.keel.app.data.PlanDoc
 import dev.keel.domain.DayState
 import dev.keel.domain.Goal
 import dev.keel.domain.GoalSort
@@ -52,10 +53,16 @@ fun HorizonsScreen(model: AppModel) {
     var sort by remember { mutableStateOf(GoalSort.MONTHS_RETURNED) }
     var openGoal by remember { mutableStateOf<Long?>(null) }
     var adding by remember { mutableStateOf(false) }
+    var showingPlans by remember { mutableStateOf(false) }
     val selected = openGoal
     if (selected != null) {
         BackHandler { openGoal = null }
         GoalDetail(model, selected) { openGoal = null }
+        return
+    }
+    if (showingPlans) {
+        BackHandler { showingPlans = false }
+        PlansScreen(model, onBack = { showingPlans = false }, onOpenGoal = { openGoal = it })
         return
     }
     val data by loadState(model) {
@@ -81,6 +88,7 @@ fun HorizonsScreen(model: AppModel) {
             }
         }
         Button({ adding = true }, Modifier.fillMaxWidth()) { Text("Add a goal") }
+        OutlinedButton({ showingPlans = true }, Modifier.fillMaxWidth()) { Text("Plans and money") }
         val loaded = data ?: return@Page
         if (loaded.ranked.isEmpty() && loaded.cooling.isEmpty()) Muted("No goals yet.")
         Horizon.entries.forEach { horizon ->
@@ -182,25 +190,35 @@ fun HorizonChoice(selected: Horizon, onSelect: (Horizon) -> Unit) {
     }
 }
 
-private data class GoalData(val goal: Goal?, val steps: List<PlanStep>)
+private data class GoalData(val goal: Goal?, val steps: List<PlanStep>, val doc: PlanDoc?)
 
 @Composable
 private fun GoalDetail(model: AppModel, goalId: Long, onClose: () -> Unit) {
-    val data by loadState(model) { GoalData(goal(goalId), steps(goalId)) }
+    val data by loadState(model) { GoalData(goal(goalId), steps(goalId), planDoc(goalId)) }
     var addingStep by remember { mutableStateOf(false) }
     var dropping by remember { mutableStateOf(false) }
     val loaded = data ?: return
     val goal = loaded.goal ?: return
     Page(goal.title, goal.horizon.label) {
-        TextButton(onClose) { Text("Back to Horizons") }
-        Panel {
-            if (goal.outcome.isNotEmpty()) Muted("Outcome: ${goal.outcome}")
-            if (goal.obstacle.isNotEmpty()) Muted("Obstacle: ${goal.obstacle}")
-            if (goal.plan.isNotEmpty()) Muted("Plan: ${goal.plan}")
+        TextButton(onClose) { Text("Back") }
+        val doc = loaded.doc
+        if (doc != null) {
+            PlanPanel(model, doc, goal, onDeleted = onClose)
+        } else {
+            Panel {
+                if (goal.outcome.isNotEmpty()) Muted("Outcome: ${goal.outcome}")
+                if (goal.obstacle.isNotEmpty()) Muted("Obstacle: ${goal.obstacle}")
+                if (goal.plan.isNotEmpty()) Muted("Plan: ${goal.plan}")
+            }
         }
         SectionTitle("Steps")
-        if (loaded.steps.isEmpty()) Muted("No steps yet. What's the smallest next step?")
+        if (loaded.steps.isEmpty()) Muted(if (doc != null) "This plan has no [ ] lines, so it's for reading." else "No steps yet. What's the smallest next step?")
+        var lastSection: String? = null
         loaded.steps.forEach { step ->
+            if (doc != null && step.source != null && step.source != lastSection) {
+                lastSection = step.source
+                Text(step.source.orEmpty(), style = MaterialTheme.typography.titleSmall)
+            }
             Panel {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(step.doneAt != null, { model.act { setStepDone(step, it) } })

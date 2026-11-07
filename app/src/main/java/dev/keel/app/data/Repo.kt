@@ -4,6 +4,13 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
 import dev.keel.domain.BackupException
+import dev.keel.domain.ExistingItem
+import dev.keel.domain.PlanCategory
+import dev.keel.domain.PlanItem
+import dev.keel.domain.guessCategory
+import dev.keel.domain.mergePlan
+import dev.keel.domain.parsePlan
+import dev.keel.domain.planWithTicks
 import dev.keel.domain.Choice
 import dev.keel.domain.Goal
 import dev.keel.domain.GoalSort
@@ -40,6 +47,12 @@ data class Rule(
 
 data class WeekUsage(val pkg: String, val minutes: Long)
 
+data class PlanDoc(val goalId: Long, val fileName: String, val category: PlanCategory, val body: String)
+
+data class ImportResult(val title: String, val updated: Boolean, val added: Int, val removed: Int)
+
+data class MoneyGoal(val id: Long, val title: String, val target: Long, val latestAmount: Long?, val latestAt: Long?)
+
 /** A decrypted backup that has passed its checks but hasn't been applied. */
 class BackupContents private constructor(
     val tables: JSONObject,
@@ -63,7 +76,8 @@ class BackupContents private constructor(
                 throw BackupException("This backup is from a newer version of Keel (format $version), so update Keel first.")
             }
             val tables = root.optJSONObject("tables") ?: throw BackupException("This backup is incomplete.")
-            for (table in Repo.TABLES) {
+            // Tables added in later versions are simply absent from older backups.
+            for (table in Repo.ORIGINAL_TABLES) {
                 if (tables.optJSONArray(table) == null) throw BackupException("This backup is incomplete: $table is missing.")
             }
             return BackupContents(
@@ -297,6 +311,169 @@ class Repo private constructor(private val db: SQLiteDatabase) {
         )
     }
 
+    // Plans
+
+    /**
+     * Imports a plan from its Markdown. A file name already in Keel updates that plan and keeps its
+     * ticks. New plans go to the library, so they don't affect pauses until you switch them on.
+     */
+    fun importPlan(fileName: String, markdown: String, now: Long = System.currentTimeMillis()): ImportResult {
+        val parsed = parsePlan(fileName, markdown)
+        db.beginTransaction()
+        try {
+            val existingGoal = list("SELECT goal_id FROM plan_doc WHERE file_name=?", fileName) { it.getLong(0) }.firstOrNull()
+            val goalId = existingGoal ?: insert("goal") {
+                put("title", parsed.title)
+                put("horizon", Horizon.YEAR.name)
+                put("status", GoalStatus.LIBRARY.name)
+                put("wish", parsed.title)
+                put("outcome", "")
+                put("obstacle", "")
+                put("plan", "")
+                put("created_at", now)
+            }
+            val current = steps(goalId)
+            val merge = mergePlan(
+                current.map { ExistingItem(it.id, PlanItem(it.source, it.title, null, false).key, it.doneAt) },
+                parsed,
+                now,
+            )
+            merge.removedIds.forEach { removeStep(it) }
+            var added = 0
+            merge.rows.forEachIndexed { position, row ->
+                if (row.existingId == null) {
+                    added++
+                    insert("plan_step") {
+                        put("goal_id", goalId)
+                        put("title", row.item.title)
+                        put("if_then", row.item.detail)
+                        put("position", position)
+                        put("done_at", row.doneAt)
+                        put("source", row.item.section)
+                    }
+                } else {
+                    db.execSQL(
+                        "UPDATE plan_step SET position=?, if_then=?, done_at=? WHERE id=?",
+                        arrayOf<Any?>(position, row.item.detail, row.doneAt, row.existingId),
+                    )
+                }
+            }
+            if (existingGoal == null) {
+                insert("plan_doc") {
+                    put("goal_id", goalId)
+                    put("file_name", fileName)
+                    put("category", guessCategory(fileName, parsed.title).name)
+                    put("body", markdown)
+                    put("imported_at", now)
+                }
+            } else {
+                db.execSQL("UPDATE plan_doc SET body=?, imported_at=? WHERE goal_id=?", arrayOf<Any>(markdown, now, goalId))
+                db.execSQL("UPDATE goal SET title=? WHERE id=?", arrayOf<Any>(parsed.title, goalId))
+            }
+            touchGoal(goalId, now)
+            db.setTransactionSuccessful()
+            return ImportResult(parsed.title, existingGoal != null, added, merge.removedIds.size)
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    private fun removeStep(id: Long) {
+        // Tasks already on Today stay, but no longer point at the removed step.
+        db.execSQL("UPDATE task SET step_id=NULL WHERE step_id=?", arrayOf<Any>(id))
+        db.execSQL("DELETE FROM plan_step WHERE id=?", arrayOf<Any>(id))
+    }
+
+    fun planDocs(): List<PlanDoc> =
+        list("SELECT goal_id, file_name, category, body FROM plan_doc ORDER BY file_name") {
+            PlanDoc(it.getLong(0), it.getString(1), PlanCategory.valueOf(it.getString(2)), it.getString(3))
+        }
+
+    fun planDoc(goalId: Long): PlanDoc? = list(
+        "SELECT goal_id, file_name, category, body FROM plan_doc WHERE goal_id=?",
+        goalId.toString(),
+    ) { PlanDoc(it.getLong(0), it.getString(1), PlanCategory.valueOf(it.getString(2)), it.getString(3)) }.firstOrNull()
+
+    fun setPlanActive(goalId: Long, active: Boolean) {
+        db.execSQL(
+            "UPDATE goal SET status=? WHERE id=?",
+            arrayOf<Any>((if (active) GoalStatus.ACTIVE else GoalStatus.LIBRARY).name, goalId),
+        )
+        if (active) touchGoal(goalId)
+    }
+
+    fun setPlanCategory(goalId: Long, category: PlanCategory) {
+        db.execSQL("UPDATE plan_doc SET category=? WHERE goal_id=?", arrayOf<Any>(category.name, goalId))
+    }
+
+    fun deletePlan(goalId: Long) {
+        db.beginTransaction()
+        try {
+            steps(goalId).forEach { removeStep(it.id) }
+            db.execSQL("DELETE FROM goal_touch WHERE goal_id=?", arrayOf<Any>(goalId))
+            db.execSQL("DELETE FROM plan_doc WHERE goal_id=?", arrayOf<Any>(goalId))
+            db.execSQL("DELETE FROM goal WHERE id=?", arrayOf<Any>(goalId))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** The plan's own Markdown with ticks set. A clean copy clears them all, for sharing. */
+    fun exportPlan(goalId: Long, clean: Boolean): String {
+        val doc = requireNotNull(planDoc(goalId)) { "That plan no longer exists." }
+        val done = if (clean) {
+            emptyList()
+        } else {
+            steps(goalId).filter { it.doneAt != null }.map { PlanItem(it.source, it.title, null, true).key }
+        }
+        return planWithTicks(doc.body, done)
+    }
+
+    // Money goals
+
+    fun addMoneyGoal(title: String, target: Long, now: Long = System.currentTimeMillis()): Long =
+        insert("money_goal") {
+            put("title", title)
+            put("target", target)
+            put("created_at", now)
+        }
+
+    /** Each update is kept as its own entry, so a goal's history is never overwritten. */
+    fun recordMoney(goalId: Long, amount: Long, now: Long = System.currentTimeMillis()) {
+        insert("money_entry") {
+            put("goal_id", goalId)
+            put("at", now)
+            put("amount", amount)
+        }
+    }
+
+    fun moneyGoals(): List<MoneyGoal> = list(
+        """SELECT g.id, g.title, g.target,
+            (SELECT amount FROM money_entry e WHERE e.goal_id=g.id ORDER BY e.at DESC, e.id DESC LIMIT 1),
+            (SELECT at FROM money_entry e WHERE e.goal_id=g.id ORDER BY e.at DESC, e.id DESC LIMIT 1)
+           FROM money_goal g ORDER BY g.created_at""",
+    ) {
+        MoneyGoal(
+            it.getLong(0),
+            it.getString(1),
+            it.getLong(2),
+            if (it.isNull(3)) null else it.getLong(3),
+            if (it.isNull(4)) null else it.getLong(4),
+        )
+    }
+
+    fun deleteMoneyGoal(id: Long) {
+        db.beginTransaction()
+        try {
+            db.execSQL("DELETE FROM money_entry WHERE goal_id=?", arrayOf<Any>(id))
+            db.execSQL("DELETE FROM money_goal WHERE id=?", arrayOf<Any>(id))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     // Sprint
 
     fun sprintUntil(): Long? = setting(SPRINT_UNTIL)?.toLongOrNull()
@@ -404,7 +581,7 @@ class Repo private constructor(private val db: SQLiteDatabase) {
             for (table in TABLES) {
                 val columns = list("PRAGMA table_info($table)") { it.getString(it.getColumnIndexOrThrow("name")) }.toSet()
                 db.execSQL("DELETE FROM $table")
-                val rows = contents.tables.getJSONArray(table)
+                val rows = contents.tables.optJSONArray(table) ?: continue
                 for (i in 0 until rows.length()) {
                     val row = rows.getJSONObject(i)
                     val values = ContentValues()
@@ -558,14 +735,15 @@ class Repo private constructor(private val db: SQLiteDatabase) {
     }
 
     companion object {
-        const val SCHEMA_VERSION = 2
+        const val SCHEMA_VERSION = 3
         private const val SPRINT_UNTIL = "sprint_until"
         const val LAST_BACKUP = "last_backup_at"
         private const val BACKUP_PHRASE = "backup_phrase"
-        val TABLES = listOf(
+        val ORIGINAL_TABLES = listOf(
             "goal", "goal_touch", "plan_step", "task", "rule", "commitment_change",
             "intercept_event", "usage_session", "review", "setting",
         )
+        val TABLES = ORIGINAL_TABLES + listOf("plan_doc", "money_goal", "money_entry")
 
         fun open(context: Context, key: String): Repo {
             System.loadLibrary("sqlcipher")
@@ -581,12 +759,25 @@ class Repo private constructor(private val db: SQLiteDatabase) {
             try {
                 if (db.version < 1) SCHEMA.forEach { db.execSQL(it) }
                 if (db.version < 2) MODES_MIGRATION.forEach { db.execSQL(it) }
+                if (db.version < 3) PLANS_MIGRATION.forEach { db.execSQL(it) }
                 db.version = SCHEMA_VERSION
                 db.setTransactionSuccessful()
             } finally {
                 db.endTransaction()
             }
         }
+
+        private val PLANS_MIGRATION = listOf(
+            """CREATE TABLE plan_doc(
+                goal_id INTEGER PRIMARY KEY REFERENCES goal(id), file_name TEXT NOT NULL UNIQUE,
+                category TEXT NOT NULL, body TEXT NOT NULL, imported_at INTEGER NOT NULL)""",
+            """CREATE TABLE money_goal(
+                id INTEGER PRIMARY KEY, title TEXT NOT NULL, target INTEGER NOT NULL, created_at INTEGER NOT NULL)""",
+            """CREATE TABLE money_entry(
+                id INTEGER PRIMARY KEY, goal_id INTEGER NOT NULL REFERENCES money_goal(id),
+                at INTEGER NOT NULL, amount INTEGER NOT NULL)""",
+            "CREATE INDEX money_entry_goal ON money_entry(goal_id, at)",
+        )
 
         /** Existing rules become plain pauses, so upgrading changes nothing until you choose a mode. */
         private val MODES_MIGRATION = listOf(

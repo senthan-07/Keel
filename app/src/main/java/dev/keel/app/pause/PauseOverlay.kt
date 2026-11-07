@@ -94,8 +94,21 @@ class PauseOverlay(
         headline?.let { layout.addView(text(it, 16f, ACCENT, bottom = 28)) }
         if (suggestion != null) {
             val minutes = suggestion.estimateMinutes?.let { " ($it min)" }.orEmpty()
-            layout.addView(text("Next step: ${suggestion.title}$minutes", 19f))
-            suggestion.serves?.let { layout.addView(text("Serves: $it", 14f, MUTED)) }
+            // Imported plan steps can be very long, and the buttons must stay on screen.
+            layout.addView(
+                text("Next step: ${suggestion.title}$minutes", 19f).apply {
+                    maxLines = 4
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                },
+            )
+            suggestion.serves?.let {
+                layout.addView(
+                    text("Serves: $it", 14f, MUTED).apply {
+                        maxLines = 2
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                    },
+                )
+            }
             layout.addView(spacer(24))
             layout.addView(button("Do it now", primary = true) { onChoice(Choice.DO_IT_NOW, null) })
         } else {
