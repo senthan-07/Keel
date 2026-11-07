@@ -168,3 +168,53 @@ Run on the optimised release build under the separate "Keel check" identity, wit
 Contrast, measured from the palette: text 14.6-18.2:1; secondary text 6.2-7.7:1; rose on page and surface 5.0-5.4:1; jet on rose fill 5.4:1; button label on Cerulean 4.39:1, just under 4.5:1.
 
 Design skills used: `emil-design-eng` (Emil Kowalski), `better-ui`, `better-typography` and `better-colors` (Jakub Krehel), and `web-design-engineer` (Garden Skills).
+
+## Full regression after the rule highlight fix (2026-11-07)
+
+Run on the optimised release build under the separate "Keel check" identity, on Samsung, with made-up plans and goals. Times are real waits, not simulated.
+
+| Check | Result |
+|---|---|
+| Unit tests, lint, no-internet check | 96 of 96 pass; no lint errors; no network permission |
+| Rule chip highlight | Fill and outline now animate together, confirmed frame by frame |
+| Pause choices | Don't open, Do it now, early Open ignored, Open with a reason, Never mind, Back and Home all work |
+| Time limit of 5 minutes | Paused after 299 seconds of use |
+| Open anyway on a limit | Paused again after 299 seconds |
+| Shorts | Paused 5 of 5, no audio behind the pause in 5 checks, no false pause in 6 scrolls |
+| Opens | 10 of 10 with none stuck |
+| Task-locked | Blocks with a task left, opens once the list is done |
+| Commitment rules | Tightening applies now; loosening shows its Monday date; tapping the current choice cancels it |
+| Sprint | Starts, covers other apps, End early dialog shows the end date |
+| Goals | Add, sort, step with minutes and if-then, tick, cooling-off lane, drop with a reason |
+| Plans | Import, re-import keeps ticks and adds new steps, paste, Active switch, clean export unticks, delete |
+| Money goals | Add, update, delete |
+| Today | Order as specified; a due item moves to the list; deleting a plan keeps its Today item |
+| Review | Check-in, time budgets, over-budget rule (273 min over at 100 per 30 min = 900), experiment start and stop |
+| Backup | Saved and checked; delete all keeps the file; wrong phrase refused; right phrase restores everything |
+| Export | Valid JSON |
+| Themes | Light, Dark and System switch |
+| Upgrade from the last commit | Data, rules and pausing all survive |
+
+**Fixed during this pass:** tick boxes didn't report their state to screen readers; the keyboard reopened over the tabs when returning to a focused field.
+
+**Not rerun:** a due weekly auto backup (a fresh backup means it isn't due; the job ran without error, and it passed in the previous pass), Export all to a folder, and the Sunday review form, which only opens on Sundays.
+
+**Not provable by this pass:** behaviour after a phone restart, overnight use, battery drain, a real Monday rollover, a full experiment, Sprint ending by itself, other phone brands.
+
+## Habit tracker (2026-11-07)
+
+Run on the optimised release build under the separate "Keel check" identity, on Samsung, with made-up data.
+
+| Check | Result |
+|---|---|
+| Unit tests | 107 of 107 pass, including 11 for streaks: misses, gaps, month and leap-year lengths, finishing |
+| Lint, no-internet check | No errors; no network permission |
+| Upgrade from the last commit, which had no habit tables | Existing data kept, and habits work |
+| Add in months and in years | 6 months from 7 Nov needs 181 days and finishes 6 May 2027; 1 year needs 365 |
+| Tick, untick, details, delete | Work, and a tick survives an app update |
+| Backup, delete all, restore | The habit and its tick came back |
+| Dark and light themes | Viewed in both |
+
+**Not seen on the phone, because it needs real days to pass:** a missed day resetting the streak, and a habit finishing. Both are covered by unit tests only.
+
+Habits don't unlock Task-locked apps and don't send reminders.

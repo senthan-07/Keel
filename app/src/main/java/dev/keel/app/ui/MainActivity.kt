@@ -40,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -50,9 +51,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import dev.keel.app.KeelApp
 import dev.keel.app.data.Repo
@@ -102,6 +106,15 @@ class MainActivity : ComponentActivity() {
         applyIntent(intent)
         setContent {
             val systemDark = isSystemInDarkTheme()
+            // Without this, the keyboard reopens over the tabs when you come back to a focused field.
+            val focus = LocalFocusManager.current
+            DisposableEffect(Unit) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_STOP) focus.clearFocus(force = true)
+                }
+                lifecycle.addObserver(observer)
+                onDispose { lifecycle.removeObserver(observer) }
+            }
             LaunchedEffect(model.theme, systemDark) {
                 ThemePrefs.save(this@MainActivity, model.theme)
                 applySystemBars(ThemePrefs.palette(this@MainActivity, model.theme))

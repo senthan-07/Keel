@@ -7,6 +7,8 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
@@ -98,7 +100,12 @@ private fun describe(setting: RuleSetting): String = when {
 private fun RuleCard(model: AppModel, rule: Rule) {
     val current = rule.state.current
     val modes = if (rule.kind == "surface") RuleMode.entries.filter { it != RuleMode.LIMIT } else RuleMode.entries
+    val later = rule.state.pending
+    val animate = motionEnabled()
+    // Changing mode swaps a row of choices, so the card eases to its new height.
+    val resize = if (animate) Modifier.animateContentSize(tween(KeelMotion.PUSH_MS, easing = KeelMotion.EaseOut)) else Modifier
     Panel {
+        Column(resize, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(rule.label, style = MaterialTheme.typography.titleMedium)
@@ -110,6 +117,7 @@ private fun RuleCard(model: AppModel, rule: Rule) {
             modes.forEach { mode ->
                 KeelChip(
                     selected = mode == current.mode,
+                    pending = later?.mode == mode,
                     onClick = { model.act { changeRule(rule, current.copy(mode = mode)) } },
                     label = { Text(mode.label, maxLines = 1) },
                 )
@@ -122,6 +130,7 @@ private fun RuleCard(model: AppModel, rule: Rule) {
                     LIMITS.forEach { minutes ->
                         KeelChip(
                             selected = minutes == current.dailyLimitMinutes,
+                            pending = later?.mode == RuleMode.LIMIT && later.dailyLimitMinutes == minutes,
                             onClick = { model.act { changeRule(rule, current.copy(dailyLimitMinutes = minutes)) } },
                             label = { Text("$minutes", maxLines = 1) },
                         )
@@ -132,6 +141,7 @@ private fun RuleCard(model: AppModel, rule: Rule) {
                 DELAYS.forEach { delay ->
                     KeelChip(
                         selected = delay == current.delaySeconds,
+                        pending = later?.mode == RuleMode.PAUSE && later.delaySeconds == delay,
                         onClick = { model.act { changeRule(rule, current.copy(delaySeconds = delay)) } },
                         label = { Text("${delay}s", maxLines = 1) },
                     )
@@ -146,6 +156,7 @@ private fun RuleCard(model: AppModel, rule: Rule) {
         val at = rule.state.pendingAt
         if (pending != null && at != null) {
             StatusLine("Changes to \"${describe(pending)}\" on ${dayName(at)}", tone = Tone.Neutral)
+        }
         }
     }
 }

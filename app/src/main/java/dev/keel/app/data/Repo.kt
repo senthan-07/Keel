@@ -3,6 +3,8 @@ package dev.keel.app.data
 import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
+import dev.keel.domain.Habit
+import dev.keel.domain.HabitUnit
 import dev.keel.domain.BackupException
 import dev.keel.domain.ExistingItem
 import dev.keel.domain.ExperimentWeek
@@ -481,6 +483,44 @@ class Repo private constructor(private val db: SQLiteDatabase) {
         }
     }
 
+    // Habits
+
+    fun addHabit(title: String, amount: Int, unit: HabitUnit, now: Long = System.currentTimeMillis()): Long =
+        insert("habit") {
+            put("title", title)
+            put("amount", amount)
+            put("unit", unit.name)
+            put("created_at", now)
+        }
+
+    /** Each habit with the days it was ticked, oldest habit first. */
+    fun habits(): List<Pair<Habit, Set<LocalDate>>> {
+        val ticks = list("SELECT habit_id, day FROM habit_day") { it.getLong(0) to LocalDate.parse(it.getString(1)) }
+            .groupBy({ it.first }, { it.second })
+        return list("SELECT id, title, amount, unit, created_at FROM habit ORDER BY created_at, id") {
+            Habit(it.getLong(0), it.getString(1), it.getInt(2), HabitUnit.valueOf(it.getString(3)), it.getLong(4))
+        }.map { habit -> habit to ticks[habit.id].orEmpty().toSet() }
+    }
+
+    fun setHabitDone(habitId: Long, day: LocalDate, done: Boolean) {
+        if (done) {
+            db.execSQL("INSERT OR IGNORE INTO habit_day(habit_id, day) VALUES(?, ?)", arrayOf<Any>(habitId, day.toString()))
+        } else {
+            db.execSQL("DELETE FROM habit_day WHERE habit_id=? AND day=?", arrayOf<Any>(habitId, day.toString()))
+        }
+    }
+
+    fun deleteHabit(id: Long) {
+        db.beginTransaction()
+        try {
+            db.execSQL("DELETE FROM habit_day WHERE habit_id=?", arrayOf<Any>(id))
+            db.execSQL("DELETE FROM habit WHERE id=?", arrayOf<Any>(id))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     // Today from plans
 
     /** Every plan that isn't finished or dropped, by id, for finding deadlines. */
@@ -829,7 +869,7 @@ class Repo private constructor(private val db: SQLiteDatabase) {
     }
 
     companion object {
-        const val SCHEMA_VERSION = 4
+        const val SCHEMA_VERSION = 5
         private const val EXPERIMENT_START = "experiment_start"
         private const val AUTO_BACKUP = "auto_backup"
         private const val SPRINT_UNTIL = "sprint_until"
@@ -839,7 +879,7 @@ class Repo private constructor(private val db: SQLiteDatabase) {
             "goal", "goal_touch", "plan_step", "task", "rule", "commitment_change",
             "intercept_event", "usage_session", "review", "setting",
         )
-        val TABLES = ORIGINAL_TABLES + listOf("plan_doc", "money_goal", "money_entry", "weekly_check", "time_envelope")
+        val TABLES = ORIGINAL_TABLES + listOf("plan_doc", "money_goal", "money_entry", "weekly_check", "time_envelope", "habit", "habit_day")
 
         fun open(context: Context, key: String): Repo {
             System.loadLibrary("sqlcipher")
@@ -857,12 +897,21 @@ class Repo private constructor(private val db: SQLiteDatabase) {
                 if (db.version < 2) MODES_MIGRATION.forEach { db.execSQL(it) }
                 if (db.version < 3) PLANS_MIGRATION.forEach { db.execSQL(it) }
                 if (db.version < 4) INSIGHTS_MIGRATION.forEach { db.execSQL(it) }
+                if (db.version < 5) HABITS_MIGRATION.forEach { db.execSQL(it) }
                 db.version = SCHEMA_VERSION
                 db.setTransactionSuccessful()
             } finally {
                 db.endTransaction()
             }
         }
+
+        private val HABITS_MIGRATION = listOf(
+            """CREATE TABLE habit(
+                id INTEGER PRIMARY KEY, title TEXT NOT NULL, amount INTEGER NOT NULL, unit TEXT NOT NULL,
+                created_at INTEGER NOT NULL)""",
+            """CREATE TABLE habit_day(
+                habit_id INTEGER NOT NULL REFERENCES habit(id), day TEXT NOT NULL, PRIMARY KEY(habit_id, day))""",
+        )
 
         private val INSIGHTS_MIGRATION = listOf(
             """CREATE TABLE weekly_check(

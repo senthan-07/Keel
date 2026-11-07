@@ -434,6 +434,7 @@ fun TodayScreen(model: AppModel) {
             Muted("Move these to today, or let them go.")
             Panel { orderTodayTasks(loaded.overdue).forEach { TaskRow(model, it, date) } }
         }
+        HabitsSection(model, date)
         DeadlinesSection(model, date)
         PlanPicksSection(model, date)
     }

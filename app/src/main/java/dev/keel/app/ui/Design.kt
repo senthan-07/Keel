@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -58,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
@@ -365,29 +367,32 @@ fun KeelTextButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: 
 fun KeelDangerButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, content: @Composable RowScope.() -> Unit) =
     KeelButtonBase(ButtonTone.Danger, onClick, modifier, enabled, content)
 
-/** A choice. Selection shows as an outline and a heavier label, not by colour alone. */
+/**
+ * A choice. Selection shows as an outline and a filled background, not by colour alone, and every part
+ * moves on one shared timing so the highlight fades as a single thing. [pending] marks a choice that
+ * takes effect later, so a deferred tap still visibly registers.
+ */
 @Composable
-fun KeelChip(selected: Boolean, onClick: () -> Unit, label: @Composable () -> Unit) {
+fun KeelChip(selected: Boolean, onClick: () -> Unit, pending: Boolean = false, label: @Composable () -> Unit) {
     val source = remember { MutableInteractionSource() }
-    val edge by animateColorAsState(
-        if (selected) KeelColor.Accent else KeelColor.Elevated,
-        tween(KeelMotion.STATE_MS, easing = KeelMotion.EaseOut),
-        label = "chip",
-    )
+    val spec = tween<Float>(KeelMotion.STATE_MS, easing = KeelMotion.EaseOut)
+    val chosen by animateFloatAsState(if (selected) 1f else 0f, spec, label = "chipSelected")
+    val later by animateFloatAsState(if (pending && !selected) 1f else 0f, spec, label = "chipPending")
+    val edge = lerp(lerp(KeelColor.Elevated, KeelColor.TextSecondary, later), KeelColor.Accent, chosen)
+    val text = lerp(KeelColor.TextSecondary, KeelColor.Text, maxOf(chosen, later))
     Box(
         Modifier
             .pressScale(source)
             .heightIn(min = 44.dp)
             .clip(MaterialTheme.shapes.small)
-            .background(if (selected) KeelColor.Elevated else Color.Transparent)
-            .border(BorderStroke(if (selected) 1.5.dp else 1.dp, edge), MaterialTheme.shapes.small)
-            .clickable(interactionSource = source, indication = androidx.compose.material3.ripple(), role = Role.RadioButton, onClick = onClick)
+            .background(KeelColor.Elevated.copy(alpha = chosen))
+            .border(BorderStroke(1.dp + 0.5.dp * maxOf(chosen, later), edge), MaterialTheme.shapes.small)
+            .clickable(interactionSource = source, indication = null, role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
-        val base = MaterialTheme.typography.labelMedium
-        CompositionLocalProvider(LocalContentColor provides if (selected) KeelColor.Text else KeelColor.TextSecondary) {
-            androidx.compose.material3.ProvideTextStyle(if (selected) base.copy(fontWeight = FontWeight.SemiBold) else base) { label() }
+        CompositionLocalProvider(LocalContentColor provides text) {
+            androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.labelMedium) { label() }
         }
     }
 }
@@ -458,11 +463,13 @@ fun KeelCheck(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, modifier:
         label = "check",
     )
     val tapArea = if (onCheckedChange != null) {
-        Modifier.clickable(
+        // Toggleable, not just clickable, so screen readers announce it as ticked or unticked.
+        Modifier.toggleable(
+            value = checked,
             interactionSource = source,
             indication = null,
             role = Role.Checkbox,
-            onClick = { onCheckedChange(!checked) },
+            onValueChange = onCheckedChange,
         )
     } else {
         Modifier
