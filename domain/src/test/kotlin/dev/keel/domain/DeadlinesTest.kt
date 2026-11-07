@@ -92,4 +92,16 @@ class DeadlinesTest {
         assertEquals("Due tomorrow", deadlineLabel(1))
         assertEquals("Due in 9 days", deadlineLabel(9))
     }
+
+    @Test fun `your list puts dated items first, soonest on top, and finished ones last`() {
+        val day = LocalDate.of(2026, 11, 20)
+        val tasks = listOf(
+            Task(1, "Plain first", day),
+            Task(2, "Later by 30 Nov 2026", day),
+            Task(3, "Done by 21 Nov 2026", day, doneAt = 5),
+            Task(4, "Soon by 22 Nov 2026", day),
+            Task(5, "Plain second", day),
+        )
+        assertEquals(listOf(4L, 2L, 1L, 5L, 3L), orderTodayTasks(tasks).map { it.id })
+    }
 }

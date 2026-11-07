@@ -75,3 +75,9 @@ fun upcomingDeadlines(
     }
     .sortedWith(compareBy({ it.daysLeft }, { it.step.position }))
     .toList()
+
+/** Your own list: unfinished items with a date first, soonest at the top, then the rest, then finished ones. */
+fun orderTodayTasks(tasks: List<Task>): List<Task> = tasks.sortedWith(
+    compareBy<Task> { it.doneAt != null }
+        .thenBy { if (it.doneAt == null) findDeadline(it.title) ?: LocalDate.MAX else LocalDate.MAX },
+)

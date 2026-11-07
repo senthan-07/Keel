@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import java.time.temporal.ChronoUnit
 import java.time.format.DateTimeFormatter
 import dev.keel.domain.findDeadline
+import dev.keel.domain.orderTodayTasks
 import dev.keel.domain.deadlineLabel
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.style.TextOverflow
@@ -397,24 +398,13 @@ private fun AddStepDialog(model: AppModel, goal: Goal, onClose: () -> Unit) {
 
 private data class TodayData(val today: List<Task>, val overdue: List<Task>)
 
-/** Today leads with what's due, then the list, then what your plans suggest next. */
+/** Your own list comes first: add, then what you've added, then what your plans suggest. */
 @Composable
 fun TodayScreen(model: AppModel) {
     val date = LocalDate.now()
     val data by loadState(model) { TodayData(tasks(date), overdueTasks(date)) }
     var text by remember { mutableStateOf("") }
     Page("Today", overline = date.format(DateTimeFormatter.ofPattern("EEEE d MMMM"))) {
-        val loaded = data ?: return@Page
-        // Overdue items count, so "done" is only ever true.
-        when (val state = dayState(loaded.today + loaded.overdue)) {
-            DayState.Empty -> Muted("Nothing planned yet. Add what matters, or pick from your plans below.")
-            is DayState.InProgress -> Panel {
-                Text("${state.done} of ${state.left + state.done} done", style = MaterialTheme.typography.titleMedium.tabular)
-                KeelProgress(state.done.toFloat() / (state.left + state.done))
-            }
-            is DayState.Finished -> DayFinishedCard()
-        }
-        DeadlinesSection(model, date)
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             KeelTextField(text, { text = it }, label = { Text("Add for today") }, modifier = Modifier.weight(1f))
             KeelSecondaryButton(
@@ -426,14 +416,25 @@ fun TodayScreen(model: AppModel) {
                 },
             ) { Text("Add") }
         }
+        val loaded = data ?: return@Page
+        // Overdue items count, so "done" is only ever true.
+        when (val state = dayState(loaded.today + loaded.overdue)) {
+            DayState.Empty -> Muted("Nothing planned yet. Add what matters, or pick from your plans below.")
+            is DayState.InProgress -> Panel {
+                Text("${state.done} of ${state.left + state.done} done", style = MaterialTheme.typography.titleMedium.tabular)
+                KeelProgress(state.done.toFloat() / (state.left + state.done))
+            }
+            is DayState.Finished -> DayFinishedCard()
+        }
         if (loaded.today.isNotEmpty()) {
-            Panel { loaded.today.forEach { TaskRow(model, it, date) } }
+            Panel { orderTodayTasks(loaded.today).forEach { TaskRow(model, it, date) } }
         }
         if (loaded.overdue.isNotEmpty()) {
             SectionTitle("From earlier days")
             Muted("Move these to today, or let them go.")
-            Panel { loaded.overdue.forEach { TaskRow(model, it, date) } }
+            Panel { orderTodayTasks(loaded.overdue).forEach { TaskRow(model, it, date) } }
         }
+        DeadlinesSection(model, date)
         PlanPicksSection(model, date)
     }
 }
