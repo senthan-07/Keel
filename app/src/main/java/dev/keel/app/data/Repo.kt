@@ -403,6 +403,18 @@ class Repo private constructor(private val db: SQLiteDatabase) {
         }
     }
 
+    /** Erases all of Keel's data in one transaction, then compacts the file so it isn't left holding old pages. */
+    fun deleteEverything() {
+        db.beginTransaction()
+        try {
+            TABLES.forEach { db.execSQL("DELETE FROM $it") }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        db.execSQL("VACUUM")
+    }
+
     /** Every table as JSON, so your data is never trapped in Keel. The recovery phrase is never included. */
     fun exportJson(now: Long = System.currentTimeMillis(), pretty: Boolean = true): String {
         val root = JSONObject()

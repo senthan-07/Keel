@@ -63,3 +63,20 @@ Run on a separate "Keel check" app with dummy data, never on the real Keel, usin
 | Plain export | Contains data, never the phrase |
 
 **Not tested:** Google Drive or any cloud location, very large databases (the backup is built in memory, which is fine at today's size but a limit for years of usage history), and restoring on a different phone.
+
+## Phone backups, delete and privacy panel (2026-11-07)
+
+Run on the separate "Keel check" app with dummy data, never on the real Keel.
+
+| Check | Result |
+|---|---|
+| App installed after setup | Appears in Add apps, and can be added as a rule |
+| Privacy panel | Shows a live result: no internet permission requested, network socket refused |
+| Manage on a permission | Warns first; Keep it on stays in Keel; Open Settings reached the overlay screen, and Back returns |
+| Back up to this phone | Saved to `Download/Keel` with no storage permission, then read back and checked |
+| Delete a backup | Warning shown, stronger on the last one; Keep keeps it; Delete removes it |
+| Uninstall Keel | Backup file stays |
+| Reinstall and restore from `Download/Keel` | Goal and rules came back |
+| Delete all my Keel data | Needs DELETE typed exactly; Cancel keeps data; afterwards Keel returns to its first screen, even after a restart, and backup files remain |
+
+**Not tested:** Manage on the other three permissions (usage access, Accessibility and notifications, which open different Settings screens), and whole-app or Reels pausing for Instagram, which isn't installed. Reels-only pausing has no rule yet. Android only lets Keel list and delete backups from its current install, so older ones need the Files app to delete, though Restore can still open them.

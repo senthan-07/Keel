@@ -92,6 +92,10 @@ class FallbackPauseService : Service() {
         private const val OVERLAP_MS = 3_000L
         private const val MAX_SEEN = 200
 
+        fun stop(context: Context) {
+            context.stopService(Intent(context, FallbackPauseService::class.java))
+        }
+
         /** Starts or stops the fallback to match the current permissions. Called from the open app. */
         fun sync(context: Context) {
             val intent = Intent(context, FallbackPauseService::class.java)

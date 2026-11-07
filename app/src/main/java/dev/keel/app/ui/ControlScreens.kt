@@ -282,7 +282,8 @@ fun DataScreen(model: AppModel) {
             }
         }
     }
-    Page("Your data", "Everything is encrypted and stays on this phone. Keel has no internet permission.") {
+    Page("Your data") {
+        PrivacyPanel(model)
         SectionTitle("Is Keel working?")
         val found = problems.orEmpty() + warnings.orEmpty()
         if (found.isEmpty()) {
@@ -306,10 +307,15 @@ fun DataScreen(model: AppModel) {
             Button({ export.launch("keel-export-${LocalDate.now()}.json") }, Modifier.fillMaxWidth()) { Text("Export") }
             message?.let { Muted(it) }
         }
+        SectionTitle("Delete")
+        DeleteEverythingSection(model)
     }
 }
 
-/** Every permission, why it's needed, whether it's on, and a shortcut to its Settings screen. */
+/**
+ * Every permission, why it's needed, and its state. Android doesn't let an app turn these off itself,
+ * so Manage explains what will stop working and then opens the right Settings screen.
+ */
 @Composable
 fun PermissionList(model: AppModel) {
     val context = LocalContext.current
@@ -319,48 +325,80 @@ fun PermissionList(model: AppModel) {
         if (withPackage) intent.data = Uri.parse("package:${context.packageName}")
         context.startActivity(intent)
     }
+    val notifications = remember(tick) {
+        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
     val notify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { model.refresh() }
     PermissionRow(
         "Display over other apps",
         "Draws the pause screen.",
         remember(tick) { Permissions.overlay(context) },
+        "Keel can't show the pause screen, so no app will be paused.",
     ) { open(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, true) }
     PermissionRow(
         "Usage access",
         "Confirms which app is open, and records time per app.",
         remember(tick) { Permissions.usage(context) },
+        "Keel stops recording time per app, and whole-app pauses become less reliable or stop.",
     ) { open(Settings.ACTION_USAGE_ACCESS_SETTINGS, false) }
     PermissionRow(
         "Accessibility",
         "Spots app launches and Shorts. Reads package names and view IDs only, never screen text.",
         remember(tick) { Permissions.accessibility(context) },
+        "Shorts-only blocking stops. Whole-app pauses keep working in a slower fallback mode once you reopen Keel.",
     ) { open(Settings.ACTION_ACCESSIBILITY_SETTINGS, false) }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        PermissionRow(
-            "Notifications",
-            "Warns you if blocking stops working.",
-            remember(tick) {
-                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
-                    android.content.pm.PackageManager.PERMISSION_GRANTED
-            },
-        ) { notify.launch(Manifest.permission.POST_NOTIFICATIONS) }
-    }
+    PermissionRow(
+        "Notifications",
+        "Warns you if blocking stops working.",
+        notifications,
+        "Keel can't warn you when blocking stops working.",
+        onManage = {
+            context.startActivity(
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+            )
+        },
+    ) { notify.launch(Manifest.permission.POST_NOTIFICATIONS) }
 }
 
 @Composable
-private fun PermissionRow(title: String, why: String, granted: Boolean, onOpen: () -> Unit) {
+private fun PermissionRow(
+    title: String,
+    why: String,
+    granted: Boolean,
+    ifTurnedOff: String,
+    onManage: (() -> Unit)? = null,
+    onOpen: () -> Unit,
+) {
+    var warning by remember { mutableStateOf(false) }
     Panel {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleSmall)
                 Muted(why)
+                if (granted) Text("On", color = MaterialTheme.colorScheme.primary)
             }
             if (granted) {
-                Text("On", color = MaterialTheme.colorScheme.primary)
+                TextButton({ warning = true }) { Text("Manage") }
             } else {
                 TextButton(onOpen) { Text("Turn on") }
             }
         }
+    }
+    if (warning) {
+        AlertDialog(
+            onDismissRequest = { warning = false },
+            title = { Text("Turn off $title?") },
+            text = { Text("$ifTurnedOff\n\nYour data stays safe. Android makes you turn this off in Settings, so Keel will take you there.") },
+            confirmButton = {
+                TextButton({
+                    warning = false
+                    (onManage ?: onOpen)()
+                }) { Text("Open Settings") }
+            },
+            dismissButton = { TextButton({ warning = false }) { Text("Keep it on") } },
+        )
     }
 }
 
@@ -382,8 +420,8 @@ fun OnboardingScreen(model: AppModel) {
         0 -> Page("Keel", "A pause that knows what you're trying to do.") {
             Panel {
                 Text("When you open an app you chose, Keel pauses it and shows your next step. You can always carry on.")
-                Muted("Nothing leaves this phone. Keel has no internet permission and no account.")
             }
+            PrivacyPanel(model)
             Button({ step = 1 }, Modifier.fillMaxWidth()) { Text("Set up") }
             RestoreSection(model, replacesData = false)
         }

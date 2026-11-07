@@ -29,7 +29,7 @@ scripts/check_no_internet.sh  # Fails if the APK requests network access
 
 Everything is in a SQLCipher database. Its key is wrapped by the Android Keystore, so the database file can't be moved to another phone.
 
-Under Your data, **Back up now** writes an encrypted `.keelbak` file wherever you choose, and reads it back to check it. Only your 25-character recovery phrase can open it, and it can't be recovered if lost. **Restore from a backup** replaces everything, and is also offered on Keel's first screen after a reinstall. The readable JSON export can't be restored.
+Under Your data, **Back up to this phone** writes an encrypted `.keelbak` file to `Download/Keel` with no storage permission, and reads it back to check it. **Choose another location** saves anywhere the file picker offers. Backups can be deleted individually, and **Delete all my Keel data** erases the database contents after a typed confirmation. Only your 25-character recovery phrase can open it, and it can't be recovered if lost. **Restore from a backup** replaces everything, and is also offered on Keel's first screen after a reinstall. The readable JSON export can't be restored.
 
 ## Testing
 

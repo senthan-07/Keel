@@ -29,6 +29,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.keel.app.data.BackupContents
+import dev.keel.app.data.LocalBackups
 import dev.keel.app.data.Repo
 import dev.keel.domain.BackupException
 import dev.keel.domain.BackupFile
@@ -112,13 +113,27 @@ fun BackupSection(model: AppModel) {
             PhraseSetup(model)
         } else {
             Text(lastBackupLine(loaded.lastAt))
-            Muted("Pick somewhere that survives losing this phone, like Google Drive, or a folder you then copy off it.")
+            Muted("Saved in Download/Keel. It stays if Keel is uninstalled, but not if this phone is lost or reset, so copy it elsewhere from time to time.")
             Button(
+                {
+                    busy = true
+                    message = "Saving and checking your backup..."
+                    scope.launch {
+                        message = withContext(Dispatchers.IO) { saveToPhone(context, model.repo, phrase!!) }
+                        busy = false
+                        model.refresh()
+                    }
+                },
+                Modifier.fillMaxWidth(),
+                enabled = !busy,
+            ) { Text("Back up to this phone") }
+            OutlinedButton(
                 { create.launch("keel-backup-${LocalDate.now()}.keelbak") },
                 Modifier.fillMaxWidth(),
                 enabled = !busy,
-            ) { Text("Back up now") }
+            ) { Text("Choose another location") }
             message?.let { Muted(it) }
+            SavedBackupsSection(model)
             if (showing) {
                 SecureScreen()
                 PhraseText(phrase)
@@ -129,6 +144,24 @@ fun BackupSection(model: AppModel) {
         }
     }
 }
+
+/** Saves to Download/Keel. The file stays hidden until checked, and a failed one is removed. */
+private fun saveToPhone(context: android.content.Context, repo: Repo, phrase: String): String {
+    val uri = try {
+        LocalBackups.create(context, "keel-backup-${LocalDate.now()}.keelbak")
+    } catch (error: Exception) {
+        return "Backup failed: ${error.message}"
+    }
+    val result = writeAndCheck(context, repo, uri, phrase)
+    if (result.startsWith(BACKUP_OK)) {
+        LocalBackups.publish(context, uri)
+    } else {
+        runCatching { LocalBackups.delete(context, uri) }
+    }
+    return result
+}
+
+private const val BACKUP_OK = "Backup saved and checked"
 
 /** Saves the backup, then reads it back and decrypts it, so "saved" means it really can be restored. */
 private fun writeAndCheck(context: android.content.Context, repo: Repo, uri: Uri, phrase: String): String =
@@ -144,7 +177,7 @@ private fun writeAndCheck(context: android.content.Context, repo: Repo, uri: Uri
         }
         check(back.contentEquals(payload)) { "The saved file didn't match." }
         repo.setSetting(Repo.LAST_BACKUP, System.currentTimeMillis().toString())
-        "Backup saved and checked (${payload.size / 1024} KB of data)."
+        "$BACKUP_OK (${payload.size / 1024} KB of data)."
     } catch (error: Exception) {
         "Backup failed, so don't rely on that file: ${error.message}"
     }
