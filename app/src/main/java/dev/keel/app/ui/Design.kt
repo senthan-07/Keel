@@ -106,7 +106,7 @@ val DarkPalette = KeelPalette(
     isDark = true,
 )
 
-/** Ice Silver, Deep Aubergine and Marigold. Crimson is added because the palette has no warning colour. */
+/** Ice Silver, Deep Aubergine and Marigold. A muted mulberry marks warnings without shouting. */
 val LightPalette = KeelPalette(
     page = Color(0xFFE4E9ED),
     surface = Color(0xFFF4F6F8),
@@ -116,7 +116,7 @@ val LightPalette = KeelPalette(
     accent = Color(0xFF3B0F40),
     accentFill = Color(0xFFEAA221),
     onAccent = Color(0xFF3B0F40),
-    danger = Color(0xFFB3123A),
+    danger = Color(0xFF8A3A63),
     onDanger = Color(0xFFF4F6F8),
     isDark = false,
 )

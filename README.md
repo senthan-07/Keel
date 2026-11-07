@@ -48,7 +48,7 @@ Built from `app/src/main/java/dev/keel/app/ui/Design.kt`, with a dark and a ligh
 | Secondary text | `#A1A1AA` | `#5D4763` |
 | Primary fill and label | Cerulean `#007BA7`, `#F5F5F5` | Marigold `#EAA221`, Deep Aubergine |
 | Outlines, icons, progress | Cerulean | Deep Aubergine |
-| Danger, overdue, over budget | Neon Rose `#FF2950` | Crimson `#B3123A` |
+| Danger, overdue, over budget | Neon Rose `#FF2950` | Mulberry `#8A3A63` |
 
 Type is JetBrainsMono Nerd Font (SIL Open Font License, see `app/src/main/assets/licenses/`), bundled so nothing is downloaded. Motion uses a 0.96 press scale, a strong ease-out, nothing over 300 ms, and skips movement when the phone's animations are off.
 
