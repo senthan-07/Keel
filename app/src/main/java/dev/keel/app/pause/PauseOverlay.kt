@@ -2,7 +2,6 @@ package dev.keel.app.pause
 
 import android.animation.ValueAnimator
 import android.content.Context
-import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -19,7 +18,9 @@ import android.view.WindowManager
 import android.view.animation.PathInterpolator
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.compose.ui.graphics.toArgb
 import dev.keel.app.R
+import dev.keel.app.ui.ThemePrefs
 import dev.keel.domain.Choice
 import dev.keel.domain.PauseSuggestion
 
@@ -51,12 +52,17 @@ class PauseOverlay(
         .build()
     private var root: LinearLayout? = null
 
+    // Follows the app's chosen theme, read when the pause opens.
+    private val palette = ThemePrefs.palette(context)
+    private val textColor = palette.text.toArgb()
+    private val mutedColor = palette.textSecondary.toArgb()
+
     /** Returns false if the window couldn't be added, for example when the permission was revoked. */
     fun show(): Boolean {
         val layout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setBackgroundColor(BACKGROUND)
+            setBackgroundColor(palette.page.toArgb())
             val pad = dp(28)
             setPadding(pad, pad, pad, pad)
         }
@@ -94,21 +100,21 @@ class PauseOverlay(
 
     private fun renderChoices(layout: LinearLayout) {
         layout.removeAllViews()
-        layout.addView(text("Pause", 40f, weight = 600))
-        layout.addView(text("You were opening $appLabel.", 15f, MUTED, bottom = if (headline == null) 28 else 10))
+        layout.addView(text("Pause", 34f, weight = 600))
+        layout.addView(text("You were opening $appLabel.", 14f, mutedColor, bottom = if (headline == null) 28 else 10))
         headline?.let { layout.addView(text(it, 16f, weight = 500, bottom = 28)) }
         if (suggestion != null) {
             val minutes = suggestion.estimateMinutes?.let { " ($it min)" }.orEmpty()
             // Imported plan steps can be very long, and the buttons must stay on screen.
             layout.addView(
-                text("Next step: ${suggestion.title}$minutes", 20f, weight = 600).apply {
+                text("Next step: ${suggestion.title}$minutes", 17f, weight = 600).apply {
                     maxLines = 4
                     ellipsize = android.text.TextUtils.TruncateAt.END
                 },
             )
             suggestion.serves?.let {
                 layout.addView(
-                    text("Serves: $it", 14f, MUTED).apply {
+                    text("Serves: $it", 13f, mutedColor).apply {
                         maxLines = 2
                         ellipsize = android.text.TextUtils.TruncateAt.END
                     },
@@ -117,7 +123,7 @@ class PauseOverlay(
             layout.addView(spacer(24))
             layout.addView(button("Do it now", primary = true) { onChoice(Choice.DO_IT_NOW, null) })
         } else {
-            layout.addView(text("Nothing is planned next. Is this what you want to do?", 20f, weight = 600, bottom = 24))
+            layout.addView(text("Nothing is planned next. Is this what you want to do?", 17f, weight = 600, bottom = 24))
         }
         layout.addView(button("Don't open", primary = suggestion == null) { onChoice(Choice.DONT_OPEN, null) })
         val open = button("Open for 5 min", primary = false) { renderReasons(layout) }
@@ -141,7 +147,7 @@ class PauseOverlay(
     /** One honest tap about why, which feeds the Sunday review. */
     private fun renderReasons(layout: LinearLayout) {
         layout.removeAllViews()
-        layout.addView(text("Why are you opening it?", 24f, weight = 600, bottom = 24))
+        layout.addView(text("Why are you opening it?", 20f, weight = 600, bottom = 24))
         for (reason in REASONS) {
             layout.addView(button(reason, primary = false) { onChoice(Choice.OPEN, reason) })
         }
@@ -149,12 +155,18 @@ class PauseOverlay(
         layout.addView(button("Never mind, don't open", primary = true) { onChoice(Choice.DONT_OPEN, null) })
     }
 
-    /** Inter, matching the app. Falls back to the system font if it can't be loaded. */
+    /** The app's font. Falls back to the system font if it can't be loaded. */
     private fun font(weight: Int): Typeface = runCatching {
-        Typeface.create(context.resources.getFont(R.font.inter_variable), weight, false)
+        val file = when {
+            weight >= 700 -> R.font.jetbrainsmono_bold
+            weight >= 600 -> R.font.jetbrainsmono_semibold
+            weight >= 500 -> R.font.jetbrainsmono_medium
+            else -> R.font.jetbrainsmono_regular
+        }
+        context.resources.getFont(file)
     }.getOrDefault(Typeface.DEFAULT)
 
-    private fun text(value: String, size: Float, color: Int = TEXT, weight: Int = 400, bottom: Int = 10) =
+    private fun text(value: String, size: Float, color: Int = textColor, weight: Int = 400, bottom: Int = 10) =
         TextView(context).apply {
             text = value
             textSize = size
@@ -170,14 +182,13 @@ class PauseOverlay(
 
     private fun button(label: String, primary: Boolean, onClick: () -> Unit) = TextView(context).apply {
         text = label
-        textSize = 16f
+        textSize = 14f
         typeface = font(600)
-        fontFeatureSettings = "tnum"
         gravity = Gravity.CENTER
-        setTextColor(TEXT)
+        setTextColor(if (primary) palette.onAccent.toArgb() else textColor)
         background = GradientDrawable().apply {
             cornerRadius = dp(16).toFloat()
-            setColor(if (primary) ACCENT else ELEVATED)
+            setColor(if (primary) palette.accentFill.toArgb() else palette.elevated.toArgb())
         }
         val vertical = dp(16)
         setPadding(dp(16), vertical, dp(16), vertical)
@@ -213,11 +224,6 @@ class PauseOverlay(
     ).toInt()
 
     private companion object {
-        val BACKGROUND = Color.parseColor("#FF0A0A0A")
-        val ELEVATED = Color.parseColor("#FF222222")
-        val ACCENT = Color.parseColor("#FF007BA7")
-        val TEXT = Color.parseColor("#FFF5F5F5")
-        val MUTED = Color.parseColor("#FFA1A1AA")
         val REFOCUS_MS = listOf(800L, 2000L)
         val REASONS = listOf("Something specific", "Planned break", "Replying to someone", "Just bored")
     }

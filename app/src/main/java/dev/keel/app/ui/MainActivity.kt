@@ -1,14 +1,17 @@
 package dev.keel.app.ui
 
 import android.content.Intent
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -59,7 +64,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Shared by all screens. Database work runs off the main thread, and each change refreshes the UI. */
-class AppModel(val repo: Repo, private val scope: CoroutineScope) {
+class AppModel(val repo: Repo, private val scope: CoroutineScope, initialTheme: ThemeMode) {
+    var theme by mutableStateOf(initialTheme)
+
     var tick by mutableIntStateOf(0)
         private set
 
@@ -88,12 +95,18 @@ class MainActivity : ComponentActivity() {
     private var screen by mutableStateOf(Screen.HORIZONS)
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
+        val startTheme = ThemePrefs.load(this)
+        applySystemBars(ThemePrefs.palette(this, startTheme))
         super.onCreate(savedInstanceState)
-        model = AppModel((application as KeelApp).repo, lifecycleScope)
+        model = AppModel((application as KeelApp).repo, lifecycleScope, startTheme)
         applyIntent(intent)
         setContent {
-            KeelTheme {
+            val systemDark = isSystemInDarkTheme()
+            LaunchedEffect(model.theme, systemDark) {
+                ThemePrefs.save(this@MainActivity, model.theme)
+                applySystemBars(ThemePrefs.palette(this@MainActivity, model.theme))
+            }
+            KeelTheme(model.theme) {
                 Surface(Modifier.fillMaxSize(), color = KeelColor.Page) {
                     Root(model, screen) { screen = it }
                 }
@@ -116,6 +129,18 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.Main) { FallbackPauseService.sync(this@MainActivity) }
             }
         }
+    }
+
+    /** Keeps status bar icons readable, and the window behind Compose the right colour, in each theme. */
+    private fun applySystemBars(palette: KeelPalette) {
+        val transparent = android.graphics.Color.TRANSPARENT
+        val style = if (palette.isDark) {
+            SystemBarStyle.dark(transparent)
+        } else {
+            SystemBarStyle.light(transparent, transparent)
+        }
+        enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+        window.setBackgroundDrawable(ColorDrawable(palette.page.toArgb()))
     }
 
     private fun applyIntent(intent: Intent?) {

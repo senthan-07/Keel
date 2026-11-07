@@ -167,4 +167,4 @@ Run on the optimised release build under the separate "Keel check" identity, wit
 
 Contrast, measured from the palette: text 14.6-18.2:1; secondary text 6.2-7.7:1; rose on page and surface 5.0-5.4:1; jet on rose fill 5.4:1; button label on Cerulean 4.39:1, just under 4.5:1.
 
-Design skills used: `emil-design-eng`, `better-ui`, `better-typography`, `better-colors`, `web-design-engineer`. No skill named after Jakub Krehel was found installed.
+Design skills used: `emil-design-eng` (Emil Kowalski), `better-ui`, `better-typography` and `better-colors` (Jakub Krehel), and `web-design-engineer` (Garden Skills).

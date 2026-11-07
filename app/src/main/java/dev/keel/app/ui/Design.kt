@@ -1,5 +1,7 @@
 package dev.keel.app.ui
 
+import android.content.Context
+import android.content.res.Configuration
 import android.provider.Settings
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.CubicBezierEasing
@@ -10,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,10 +46,13 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,34 +60,107 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.core.content.edit
 import dev.keel.app.R
 
 /**
- * Keel's colour roles. Measured contrast decided the rules, so keep to them:
- * - [Accent] (Cerulean) is for fills, outlines, icons and progress, never small text (3.3-4.1:1).
- * - [Danger] (Neon Rose) only means danger, overdue or over budget, and is readable on page and surface.
- * - Reading text only uses [Text] and [TextSecondary] (6.2:1 or better on every surface).
+ * One theme's colours, by role. Measured contrast decided the rules, so keep to them:
+ * - [accentFill] with [onAccent] is the primary action. Marigold is too pale to use alone on Ice Silver.
+ * - [accent] is for outlines, icons and progress. Cerulean is never small text (3.3-4.1:1).
+ * - [danger] only means danger, overdue or over budget.
+ * - Reading text only uses [text] and [textSecondary].
  */
+data class KeelPalette(
+    val page: Color,
+    val surface: Color,
+    val elevated: Color,
+    val text: Color,
+    val textSecondary: Color,
+    val accent: Color,
+    val accentFill: Color,
+    val onAccent: Color,
+    val danger: Color,
+    val onDanger: Color,
+    val isDark: Boolean,
+)
+
+/** Jet Black, Cerulean and Neon Rose. */
+val DarkPalette = KeelPalette(
+    page = Color(0xFF0A0A0A),
+    surface = Color(0xFF141414),
+    elevated = Color(0xFF222222),
+    text = Color(0xFFF5F5F5),
+    textSecondary = Color(0xFFA1A1AA),
+    accent = Color(0xFF007BA7),
+    accentFill = Color(0xFF007BA7),
+    onAccent = Color(0xFFF5F5F5),
+    danger = Color(0xFFFF2950),
+    onDanger = Color(0xFF0A0A0A),
+    isDark = true,
+)
+
+/** Ice Silver, Deep Aubergine and Marigold. Crimson is added because the palette has no warning colour. */
+val LightPalette = KeelPalette(
+    page = Color(0xFFE4E9ED),
+    surface = Color(0xFFF4F6F8),
+    elevated = Color(0xFFD3DAE0),
+    text = Color(0xFF3B0F40),
+    textSecondary = Color(0xFF5D4763),
+    accent = Color(0xFF3B0F40),
+    accentFill = Color(0xFFEAA221),
+    onAccent = Color(0xFF3B0F40),
+    danger = Color(0xFFB3123A),
+    onDanger = Color(0xFFF4F6F8),
+    isDark = false,
+)
+
+enum class ThemeMode(val label: String) { SYSTEM("System"), LIGHT("Light"), DARK("Dark") }
+
+/** Stored outside the database so the first frame and the pause screen can read it instantly. */
+object ThemePrefs {
+    private const val FILE = "appearance"
+    private const val KEY = "theme"
+
+    fun load(context: Context): ThemeMode = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        .getString(KEY, null)?.let { saved -> ThemeMode.entries.firstOrNull { it.name == saved } } ?: ThemeMode.SYSTEM
+
+    fun save(context: Context, mode: ThemeMode) {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit { putString(KEY, mode.name) }
+    }
+
+    fun palette(context: Context, mode: ThemeMode = load(context)): KeelPalette = when (mode) {
+        ThemeMode.LIGHT -> LightPalette
+        ThemeMode.DARK -> DarkPalette
+        ThemeMode.SYSTEM -> {
+            val night = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+            if (night == Configuration.UI_MODE_NIGHT_YES) DarkPalette else LightPalette
+        }
+    }
+}
+
+/** The colours in force. Reading these from a screen redraws it when the theme changes. */
 object KeelColor {
-    val Page = Color(0xFF0A0A0A)
-    val Surface = Color(0xFF141414)
-    val Elevated = Color(0xFF222222)
-    val Text = Color(0xFFF5F5F5)
-    val TextSecondary = Color(0xFFA1A1AA)
-    val Accent = Color(0xFF007BA7)
-    val Danger = Color(0xFFFF2950)
+    var palette by mutableStateOf(DarkPalette)
+    val Page get() = palette.page
+    val Surface get() = palette.surface
+    val Elevated get() = palette.elevated
+    val Text get() = palette.text
+    val TextSecondary get() = palette.textSecondary
+    val Accent get() = palette.accent
+    val AccentFill get() = palette.accentFill
+    val OnAccent get() = palette.onAccent
+    val Danger get() = palette.danger
+    val OnDanger get() = palette.onDanger
 
     /** An input's edge at rest. Half-strength secondary keeps it visible without shouting. */
-    val InputEdge = TextSecondary.copy(alpha = 0.5f)
+    val InputEdge get() = palette.textSecondary.copy(alpha = 0.5f)
 }
 
 /** Spacing on a 4 dp grid. */
@@ -109,18 +188,12 @@ fun motionEnabled(): Boolean {
     return remember(resolver) { Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f }
 }
 
-@OptIn(ExperimentalTextApi::class)
-private fun inter(weight: FontWeight) = Font(
-    R.font.inter_variable,
-    weight = weight,
-    variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight)),
-)
-
-val InterFamily = FontFamily(
-    inter(FontWeight.Normal),
-    inter(FontWeight.Medium),
-    inter(FontWeight.SemiBold),
-    inter(FontWeight.Bold),
+/** JetBrainsMono Nerd Font, bundled so nothing is downloaded. */
+val KeelFontFamily = FontFamily(
+    Font(R.font.jetbrainsmono_regular, FontWeight.Normal),
+    Font(R.font.jetbrainsmono_medium, FontWeight.Medium),
+    Font(R.font.jetbrainsmono_semibold, FontWeight.SemiBold),
+    Font(R.font.jetbrainsmono_bold, FontWeight.Bold),
 )
 
 private fun style(
@@ -129,59 +202,63 @@ private fun style(
     weight: FontWeight = FontWeight.Normal,
     tracking: Double = 0.0,
 ) = TextStyle(
-    fontFamily = InterFamily,
+    fontFamily = KeelFontFamily,
     fontSize = size.sp,
     lineHeight = line.sp,
     fontWeight = weight,
     letterSpacing = tracking.em,
 )
 
+// A monospace font runs wide, so sizes sit a step below a proportional scale, and headings stay untracked.
 val KeelTypography = Typography(
-    displaySmall = style(44, 48, FontWeight.SemiBold, -0.025),
-    headlineLarge = style(32, 38, FontWeight.SemiBold, -0.02),
-    headlineMedium = style(32, 38, FontWeight.SemiBold, -0.02),
-    headlineSmall = style(26, 32, FontWeight.SemiBold, -0.015),
-    titleLarge = style(20, 26, FontWeight.SemiBold, -0.01),
-    titleMedium = style(16, 22, FontWeight.SemiBold),
-    titleSmall = style(14, 20, FontWeight.SemiBold),
-    bodyLarge = style(16, 24),
-    bodyMedium = style(14, 21),
-    bodySmall = style(13, 18),
-    labelLarge = style(16, 20, FontWeight.SemiBold),
-    labelMedium = style(14, 18, FontWeight.Medium),
-    labelSmall = style(12, 16, FontWeight.Medium, 0.05),
+    displaySmall = style(38, 44, FontWeight.SemiBold, -0.02),
+    headlineLarge = style(28, 34, FontWeight.SemiBold, -0.015),
+    headlineMedium = style(28, 34, FontWeight.SemiBold, -0.015),
+    headlineSmall = style(22, 28, FontWeight.SemiBold, -0.01),
+    titleLarge = style(18, 25, FontWeight.SemiBold),
+    titleMedium = style(15, 21, FontWeight.SemiBold),
+    titleSmall = style(13, 19, FontWeight.SemiBold),
+    bodyLarge = style(15, 23),
+    bodyMedium = style(13, 20),
+    bodySmall = style(12, 17),
+    labelLarge = style(14, 20, FontWeight.SemiBold),
+    labelMedium = style(13, 18, FontWeight.Medium),
+    labelSmall = style(11, 16, FontWeight.Medium, 0.05),
 )
 
 /** For numbers that change, so digits keep one width and nothing shifts. */
 val TextStyle.tabular: TextStyle get() = copy(fontFeatureSettings = "tnum")
 
-val KeelColorScheme: ColorScheme = darkColorScheme(
-    primary = KeelColor.Accent,
-    onPrimary = KeelColor.Text,
-    primaryContainer = KeelColor.Elevated,
-    onPrimaryContainer = KeelColor.Text,
-    secondaryContainer = KeelColor.Elevated,
-    onSecondaryContainer = KeelColor.Text,
-    background = KeelColor.Page,
-    onBackground = KeelColor.Text,
-    surface = KeelColor.Surface,
-    onSurface = KeelColor.Text,
-    surfaceVariant = KeelColor.Surface,
-    onSurfaceVariant = KeelColor.TextSecondary,
-    // Dialogs sit on Surface, where Neon Rose text stays readable.
-    surfaceContainer = KeelColor.Surface,
-    surfaceContainerLow = KeelColor.Surface,
-    surfaceContainerLowest = KeelColor.Surface,
-    surfaceContainerHigh = KeelColor.Surface,
-    surfaceContainerHighest = KeelColor.Elevated,
-    surfaceBright = KeelColor.Elevated,
-    surfaceDim = KeelColor.Page,
-    outline = KeelColor.InputEdge,
-    outlineVariant = KeelColor.Elevated,
-    error = KeelColor.Danger,
-    onError = KeelColor.Page,
-    scrim = Color.Black,
-)
+private fun colorSchemeFor(p: KeelPalette): ColorScheme {
+    val base = if (p.isDark) darkColorScheme() else lightColorScheme()
+    return base.copy(
+        primary = p.accentFill,
+        onPrimary = p.onAccent,
+        primaryContainer = p.elevated,
+        onPrimaryContainer = p.text,
+        secondaryContainer = p.elevated,
+        onSecondaryContainer = p.text,
+        background = p.page,
+        onBackground = p.text,
+        surface = p.surface,
+        onSurface = p.text,
+        surfaceVariant = p.surface,
+        onSurfaceVariant = p.textSecondary,
+        // Dialogs sit on surface, where danger text stays readable in both themes.
+        surfaceContainer = p.surface,
+        surfaceContainerLow = p.surface,
+        surfaceContainerLowest = p.surface,
+        surfaceContainerHigh = p.surface,
+        surfaceContainerHighest = p.elevated,
+        surfaceBright = p.elevated,
+        surfaceDim = p.page,
+        outline = p.textSecondary.copy(alpha = 0.5f),
+        outlineVariant = p.elevated,
+        error = p.danger,
+        onError = p.onDanger,
+        scrim = Color.Black,
+    )
+}
 
 val KeelShapes = Shapes(
     extraSmall = RoundedCornerShape(10.dp),
@@ -192,8 +269,15 @@ val KeelShapes = Shapes(
 )
 
 @Composable
-fun KeelTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = KeelColorScheme, typography = KeelTypography, shapes = KeelShapes, content = content)
+fun KeelTheme(mode: ThemeMode, content: @Composable () -> Unit) {
+    val dark = when (mode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
+    val palette = if (dark) DarkPalette else LightPalette
+    KeelColor.palette = palette
+    MaterialTheme(colorScheme = colorSchemeFor(palette), typography = KeelTypography, shapes = KeelShapes, content = content)
 }
 
 /** The press response every tappable thing shares. Disabled controls never scale. */
@@ -227,13 +311,14 @@ private fun KeelButtonBase(
     val background = when {
         tone == ButtonTone.Quiet -> Color.Transparent
         !enabled -> KeelColor.Elevated
-        tone == ButtonTone.Primary -> KeelColor.Accent
+        tone == ButtonTone.Primary -> KeelColor.AccentFill
         tone == ButtonTone.Danger -> KeelColor.Danger
         else -> KeelColor.Elevated
     }
     val foreground = when {
         !enabled -> KeelColor.TextSecondary
-        tone == ButtonTone.Danger -> KeelColor.Page
+        tone == ButtonTone.Danger -> KeelColor.OnDanger
+        tone == ButtonTone.Primary -> KeelColor.OnAccent
         else -> KeelColor.Text
     }
     CompositionLocalProvider(LocalContentColor provides foreground) {
@@ -256,7 +341,7 @@ private fun KeelButtonBase(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val labelStyle = MaterialTheme.typography.labelLarge
-            androidx.compose.material3.ProvideTextStyle(if (tone == ButtonTone.Quiet) labelStyle.copy(fontSize = 15.sp) else labelStyle) {
+            androidx.compose.material3.ProvideTextStyle(if (tone == ButtonTone.Quiet) labelStyle.copy(fontSize = 14.sp) else labelStyle) {
                 content()
             }
         }
@@ -353,8 +438,8 @@ fun KeelSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
         checked,
         onCheckedChange,
         colors = SwitchDefaults.colors(
-            checkedThumbColor = KeelColor.Text,
-            checkedTrackColor = KeelColor.Accent,
+            checkedThumbColor = KeelColor.OnAccent,
+            checkedTrackColor = KeelColor.AccentFill,
             checkedBorderColor = KeelColor.Accent,
             uncheckedThumbColor = KeelColor.TextSecondary,
             uncheckedTrackColor = KeelColor.Elevated,
@@ -368,7 +453,7 @@ fun KeelSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
 fun KeelCheck(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, modifier: Modifier = Modifier) {
     val source = remember { MutableInteractionSource() }
     val fill by animateColorAsState(
-        if (checked) KeelColor.Accent else Color.Transparent,
+        if (checked) KeelColor.AccentFill else Color.Transparent,
         tween(KeelMotion.STATE_MS, easing = KeelMotion.EaseOut),
         label = "check",
     )
@@ -393,7 +478,7 @@ fun KeelCheck(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, modifier:
             contentAlignment = Alignment.Center,
         ) {
             if (checked) {
-                Icon(Icons.Rounded.Check, contentDescription = "Done", tint = KeelColor.Text, modifier = Modifier.size(16.dp))
+                Icon(Icons.Rounded.Check, contentDescription = "Done", tint = KeelColor.OnAccent, modifier = Modifier.size(16.dp))
             }
         }
     }

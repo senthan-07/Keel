@@ -37,19 +37,20 @@ scripts/check_no_internet.sh  # Fails if the APK requests network access
 
 ## Design
 
-Dark and minimal, built from `app/src/main/java/dev/keel/app/ui/Design.kt`. Screens use its tokens and components, not raw colours.
+Built from `app/src/main/java/dev/keel/app/ui/Design.kt`, with a dark and a light theme, chosen under Your data. Screens use its roles, not raw colours.
 
-| Token | Value | Use |
+| Role | Dark | Light |
 |---|---|---|
-| Page | `#0A0A0A` | Background |
-| Surface | `#141414` | Cards and dialogs |
-| Elevated | `#222222` | Secondary buttons, selected chips, tracks |
-| Text | `#F5F5F5` | Reading text |
-| Secondary text | `#A1A1AA` | Supporting text |
-| Accent | `#007BA7` | Primary fill, outlines, icons, progress. Never small text (3.3-4.1:1) |
-| Danger | `#FF2950` | Only danger, overdue and over budget |
+| Page | Jet Black `#0A0A0A` | Ice Silver `#E4E9ED` |
+| Surface | `#141414` | `#F4F6F8` |
+| Elevated | `#222222` | `#D3DAE0` |
+| Text | `#F5F5F5` | Deep Aubergine `#3B0F40` |
+| Secondary text | `#A1A1AA` | `#5D4763` |
+| Primary fill and label | Cerulean `#007BA7`, `#F5F5F5` | Marigold `#EAA221`, Deep Aubergine |
+| Outlines, icons, progress | Cerulean | Deep Aubergine |
+| Danger, overdue, over budget | Neon Rose `#FF2950` | Crimson `#B3123A` |
 
-Type is Inter (SIL Open Font License, see `app/src/main/assets/licenses/`), bundled so nothing is downloaded. Motion uses a 0.96 press scale, a strong ease-out, nothing over 300 ms, and skips movement when the phone's animations are off.
+Type is JetBrainsMono Nerd Font (SIL Open Font License, see `app/src/main/assets/licenses/`), bundled so nothing is downloaded. Motion uses a 0.96 press scale, a strong ease-out, nothing over 300 ms, and skips movement when the phone's animations are off.
 
 See `TODO.md` for what's left.
 

@@ -10,7 +10,7 @@ Status as of 2026-11-07. Personal plans are not kept in this repo.
 - [x] Deadlines in Today, from dates written in plans
 - [x] Weekly check-in, time budgets, time-to-money rule, and on and off experiment
 - [x] Encrypted backup and restore, automatic weekly backup, delete, and live privacy check
-- [x] Premium dark redesign of every screen, including the pause screen
+- [x] Dark and light themes on every screen, including the pause screen, with JetBrainsMono Nerd Font
 - [x] Release build, with shrinking and no network permissions
 
 ## Needs a real phone over time

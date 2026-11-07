@@ -169,11 +169,11 @@ private fun SprintPanel(model: AppModel) {
             Muted("Every rule that's on waits $EMERGENCY_DELAY_SECONDS seconds, including time limits and finished lists.")
             KeelSecondaryButton({ ending = true }, Modifier.fillMaxWidth()) { Text("End early") }
         } else {
-            Muted("Make every rule that's on stricter for a set time. You can still get through after a $EMERGENCY_DELAY_SECONDS-second wait.")
+            Muted("Choose how many days to make every rule that's on stricter. You can still get through after a $EMERGENCY_DELAY_SECONDS-second wait.")
         }
         ChipRow {
             SPRINT_DAYS.forEach { days ->
-                KeelChip(selected = false, onClick = { startDays = days }, label = { Text(if (days == 1) "1 day" else "$days days", maxLines = 1) })
+                KeelChip(selected = false, onClick = { startDays = days }, label = { Text("${days}d", maxLines = 1) })
             }
         }
     }
@@ -410,6 +410,15 @@ fun DataScreen(model: AppModel) {
             Panel { StatusLine("Yes. Every check passed") }
         } else {
             Panel { found.forEach { problem -> StatusLine(problem, tone = Tone.Danger) } }
+        }
+        SectionTitle("Appearance")
+        Panel {
+            ChipRow {
+                ThemeMode.entries.forEach { mode ->
+                    KeelChip(selected = mode == model.theme, onClick = { model.theme = mode }, label = { Text(mode.label, maxLines = 1) })
+                }
+            }
+            Muted("System follows your phone's light or dark setting.")
         }
         SectionTitle("Permissions")
         PermissionList(model)
