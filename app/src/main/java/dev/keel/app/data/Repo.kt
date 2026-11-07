@@ -314,6 +314,10 @@ class Repo private constructor(private val db: SQLiteDatabase) {
         )
     }
 
+    fun autoBackupOn(): Boolean = setting(AUTO_BACKUP) == "true"
+
+    fun setAutoBackup(on: Boolean) = setSetting(AUTO_BACKUP, on.toString())
+
     // Plans
 
     /**
@@ -478,6 +482,11 @@ class Repo private constructor(private val db: SQLiteDatabase) {
     }
 
     // Today from plans
+
+    /** Every plan that isn't finished or dropped, by id, for finding deadlines. */
+    fun openPlanTitles(): Map<Long, String> = goals()
+        .filter { it.status == GoalStatus.ACTIVE || it.status == GoalStatus.LIBRARY }
+        .associate { it.id to it.title }
 
     /** Steps that already have an unfinished task, so they aren't suggested twice. */
     fun openTaskStepIds(): Set<Long> =
@@ -822,6 +831,7 @@ class Repo private constructor(private val db: SQLiteDatabase) {
     companion object {
         const val SCHEMA_VERSION = 4
         private const val EXPERIMENT_START = "experiment_start"
+        private const val AUTO_BACKUP = "auto_backup"
         private const val SPRINT_UNTIL = "sprint_until"
         const val LAST_BACKUP = "last_backup_at"
         private const val BACKUP_PHRASE = "backup_phrase"

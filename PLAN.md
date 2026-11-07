@@ -317,3 +317,7 @@ Keel never asks for bank data. Finance plans are optional, and people simply typ
 Built: pause and Shorts blocking, modes, Today, Horizons, imported plans, money goals, weekly check-in, time budgets, the time-to-money rule, the friction experiment, backup and restore, and the privacy panel.
 
 Decided against, or left out for now: bank import, budgets and payday prompts, Health Connect, AI, voice, sync and iPhone. Still to check through real use: restarting the phone, overnight use, battery drain, and the 4-week trial.
+
+## Status: redesign finished (2026-11-07)
+
+Every screen now uses the dark Jet, Cerulean and Neon Rose design. Deadlines appear in Today, automatic weekly backup is optional, and the installed build is the optimised release. `TODO.md` lists what still needs real-world use.

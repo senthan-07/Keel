@@ -72,7 +72,11 @@ class FallbackPauseService : Service() {
             .setContentText("Turn on Accessibility for Shorts-only blocking.")
             .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
             .build()
-        startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
         since = System.currentTimeMillis()
         handler.post(poll)
     }

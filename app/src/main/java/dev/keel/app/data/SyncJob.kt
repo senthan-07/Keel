@@ -17,7 +17,9 @@ import dev.keel.app.KeelApp
 import dev.keel.app.pause.Permissions
 import dev.keel.app.ui.MainActivity
 import dev.keel.domain.UsageEvent
+import dev.keel.domain.backupIsStale
 import dev.keel.domain.buildSessions
+import java.time.LocalDate
 import kotlin.concurrent.thread
 
 /**
@@ -31,6 +33,7 @@ class SyncJob : JobService() {
             runCatching {
                 sync(this)
                 warnIfBroken(this)
+                autoBackupIfDue(this)
             }
             jobFinished(params, false)
         }
@@ -80,6 +83,18 @@ class SyncJob : JobService() {
             repo.setSetting(OPEN_PKG, result.openPkg.orEmpty())
             repo.setSetting(OPEN_SINCE, result.openSince?.toString().orEmpty())
             repo.setSetting(LAST_SYNC, now.toString())
+        }
+
+        /** Weekly encrypted backup, if you turned it on. A failure leaves the "last backup" date alone. */
+        private fun autoBackupIfDue(context: Context) {
+            val repo = (context.applicationContext as KeelApp).repo
+            if (!repo.autoBackupOn()) return
+            val phrase = repo.backupPhrase() ?: return
+            if (!backupIsStale(repo.setting(Repo.LAST_BACKUP)?.toLongOrNull(), System.currentTimeMillis())) return
+            val name = "${LocalBackups.AUTO_PREFIX}${LocalDate.now()}.keelbak"
+            if (BackupWriter.saveToPhone(context, repo, phrase, name).startsWith(BackupWriter.OK)) {
+                LocalBackups.pruneAutomatic(context)
+            }
         }
 
         private fun warnIfBroken(context: Context) {

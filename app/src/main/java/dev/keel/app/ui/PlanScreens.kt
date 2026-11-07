@@ -1,6 +1,24 @@
 package dev.keel.app.ui
 
 import androidx.activity.compose.BackHandler
+import java.time.temporal.ChronoUnit
+import java.time.format.DateTimeFormatter
+import dev.keel.domain.findDeadline
+import dev.keel.domain.deadlineLabel
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.offset
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,14 +27,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,23 +60,70 @@ private data class HorizonData(
     val ended: List<Goal>,
 )
 
+private sealed interface HorizonRoute {
+    data object Home : HorizonRoute
+    data object Plans : HorizonRoute
+    data class Goal(val id: Long, val fromPlans: Boolean) : HorizonRoute
+}
+
+/** Going deeper slides in from the side and coming back reverses it, so you always know where you are. */
 @Composable
 fun HorizonsScreen(model: AppModel) {
+    var route by remember { mutableStateOf<HorizonRoute>(HorizonRoute.Home) }
+    val animate = motionEnabled()
+    val depth = { r: HorizonRoute ->
+        when (r) {
+            HorizonRoute.Home -> 0
+            HorizonRoute.Plans -> 1
+            is HorizonRoute.Goal -> 2
+        }
+    }
+    AnimatedContent(
+        route,
+        transitionSpec = {
+            val direction = if (depth(targetState) >= depth(initialState)) 1 else -1
+            val enter = tween<Float>(KeelMotion.PUSH_MS, easing = KeelMotion.EaseOut)
+            val exit = tween<Float>(KeelMotion.STATE_MS, easing = KeelMotion.EaseOut)
+            val move = tween<IntOffset>(KeelMotion.PUSH_MS, easing = KeelMotion.EaseOut)
+            if (animate) {
+                (fadeIn(enter) + slideInHorizontally(move) { it / 12 * direction }) togetherWith
+                    (fadeOut(exit) + slideOutHorizontally(move) { -it / 24 * direction })
+            } else {
+                fadeIn(enter) togetherWith fadeOut(exit)
+            }
+        },
+        label = "horizons",
+    ) { current ->
+        when (current) {
+            HorizonRoute.Home -> HorizonsHome(
+                model,
+                onOpenPlans = { route = HorizonRoute.Plans },
+                onOpenGoal = { route = HorizonRoute.Goal(it, fromPlans = false) },
+            )
+            HorizonRoute.Plans -> {
+                BackHandler { route = HorizonRoute.Home }
+                PlansScreen(
+                    model,
+                    onBack = { route = HorizonRoute.Home },
+                    onOpenGoal = { route = HorizonRoute.Goal(it, fromPlans = true) },
+                )
+            }
+            is HorizonRoute.Goal -> {
+                val back = { route = if (current.fromPlans) HorizonRoute.Plans else HorizonRoute.Home }
+                BackHandler(onBack = back)
+                GoalDetail(model, current.id, back)
+            }
+        }
+    }
+}
+
+private fun stepFraction(steps: List<PlanStep>): Float =
+    if (steps.isEmpty()) 0f else steps.count { it.doneAt != null }.toFloat() / steps.size
+
+@Composable
+private fun HorizonsHome(model: AppModel, onOpenPlans: () -> Unit, onOpenGoal: (Long) -> Unit) {
     var sort by remember { mutableStateOf(GoalSort.MONTHS_RETURNED) }
-    var openGoal by remember { mutableStateOf<Long?>(null) }
     var adding by remember { mutableStateOf(false) }
-    var showingPlans by remember { mutableStateOf(false) }
-    val selected = openGoal
-    if (selected != null) {
-        BackHandler { openGoal = null }
-        GoalDetail(model, selected) { openGoal = null }
-        return
-    }
-    if (showingPlans) {
-        BackHandler { showingPlans = false }
-        PlansScreen(model, onBack = { showingPlans = false }, onOpenGoal = { openGoal = it })
-        return
-    }
     val data by loadState(model) {
         HorizonData(
             ranked(sort),
@@ -73,36 +132,47 @@ fun HorizonsScreen(model: AppModel) {
             goals(GoalStatus.KILLED) + goals(GoalStatus.DONE),
         )
     }
+    val next by loadState(model) { suggestion() }
     val now = System.currentTimeMillis()
     Page("Horizons", "Ranked by what you keep coming back to.") {
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            GoalSort.entries.forEach {
-                FilterChip(
-                    selected = it == sort,
-                    onClick = {
-                        sort = it
-                        model.refresh()
-                    },
-                    label = { Text(it.label, maxLines = 1) },
-                )
+        next?.let { step ->
+            Panel {
+                Text("NEXT STEP", style = MaterialTheme.typography.labelSmall, color = KeelColor.TextSecondary)
+                Text(step.title, style = MaterialTheme.typography.titleLarge, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                step.serves?.let { Muted("Serves $it") }
             }
         }
-        Button({ adding = true }, Modifier.fillMaxWidth()) { Text("Add a goal") }
-        OutlinedButton({ showingPlans = true }, Modifier.fillMaxWidth()) { Text("Plans and money") }
+        KeelButton({ adding = true }, Modifier.fillMaxWidth()) { Text("Add a goal") }
+        NavRow("Plans and money", "Imported plans and savings goals", onOpenPlans)
         val loaded = data ?: return@Page
-        if (loaded.ranked.isEmpty() && loaded.cooling.isEmpty()) Muted("No goals yet.")
+        if (loaded.ranked.isEmpty() && loaded.cooling.isEmpty()) {
+            Muted("Nothing here yet. Add a goal, or switch on a plan under Plans and money.")
+        } else {
+            SectionTitle("Sort by")
+            ChipRow {
+                GoalSort.entries.forEach {
+                    KeelChip(
+                        selected = it == sort,
+                        onClick = {
+                            sort = it
+                            model.refresh()
+                        },
+                        label = { Text(it.label, maxLines = 1) },
+                    )
+                }
+            }
+        }
         Horizon.entries.forEach { horizon ->
             val inHorizon = loaded.ranked.filter { it.goal.horizon == horizon }
             if (inHorizon.isNotEmpty()) {
                 SectionTitle(horizon.label)
                 inHorizon.forEach { ranked ->
                     val steps = loaded.steps.filter { it.goalId == ranked.goal.id }
-                    Panel {
-                        Column(Modifier.clickable { openGoal = ranked.goal.id }) {
-                            Text(ranked.goal.title, style = MaterialTheme.typography.titleMedium)
-                            Muted(realState(steps, ranked.lastTouch, now))
-                            Muted(monthsLine(ranked.monthsReturned))
-                        }
+                    Panel({ onOpenGoal(ranked.goal.id) }) {
+                        Text(ranked.goal.title, style = MaterialTheme.typography.titleMedium)
+                        if (steps.isNotEmpty()) KeelProgress(stepFraction(steps))
+                        Muted(realState(steps, ranked.lastTouch, now))
+                        Muted(monthsLine(ranked.monthsReturned))
                     }
                 }
             }
@@ -111,19 +181,19 @@ fun HorizonsScreen(model: AppModel) {
             SectionTitle("Cooling off")
             Muted("New long-term ambitions wait 30 days before they join your plan.")
             loaded.cooling.forEach { goal ->
-                Panel {
-                    Column(Modifier.clickable { openGoal = goal.id }) {
-                        Text(goal.title, style = MaterialTheme.typography.titleMedium)
-                        Muted("${goal.horizon.label}: ${coolingDaysLeft(goal.coolingUntil ?: now, now)} days left")
-                    }
+                Panel({ onOpenGoal(goal.id) }) {
+                    Text(goal.title, style = MaterialTheme.typography.titleMedium)
+                    Muted("${goal.horizon.label}: ${coolingDaysLeft(goal.coolingUntil ?: now, now)} days left")
                 }
             }
         }
         if (loaded.ended.isNotEmpty()) {
             SectionTitle("Ended")
-            loaded.ended.forEach { goal ->
-                val why = goal.endedReason?.let { ": $it" }.orEmpty()
-                Muted("${goal.title} (${if (goal.status == GoalStatus.DONE) "done" else "dropped"}$why)")
+            Panel {
+                loaded.ended.forEach { goal ->
+                    val why = goal.endedReason?.let { ": $it" }.orEmpty()
+                    Muted("${goal.title} (${if (goal.status == GoalStatus.DONE) "done" else "dropped"}$why)")
+                }
             }
         }
     }
@@ -151,7 +221,7 @@ private fun AddGoalDialog(model: AppModel, onClose: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(
+            KeelTextButton(
                 enabled = title.isNotBlank(),
                 onClick = {
                     val cleanTitle = title.trim()
@@ -160,7 +230,7 @@ private fun AddGoalDialog(model: AppModel, onClose: () -> Unit) {
                 },
             ) { Text("Add") }
         },
-        dismissButton = { TextButton(onClose) { Text("Cancel") } },
+        dismissButton = { KeelTextButton(onClose) { Text("Cancel") } },
     )
 }
 
@@ -175,17 +245,17 @@ fun WoopFields(
     plan: String,
     onPlan: (String) -> Unit,
 ) {
-    OutlinedTextField(wish, onWish, label = { Text("Wish: what do you want?") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(outcome, onOutcome, label = { Text("Outcome: best result?") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(obstacle, onObstacle, label = { Text("Obstacle: what in you gets in the way?") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(plan, onPlan, label = { Text("Plan: if that happens, I will...") }, modifier = Modifier.fillMaxWidth())
+    KeelTextField(wish, onWish, label = { Text("Wish: what do you want?") }, modifier = Modifier.fillMaxWidth())
+    KeelTextField(outcome, onOutcome, label = { Text("Outcome: best result?") }, modifier = Modifier.fillMaxWidth())
+    KeelTextField(obstacle, onObstacle, label = { Text("Obstacle: what in you gets in the way?") }, modifier = Modifier.fillMaxWidth())
+    KeelTextField(plan, onPlan, label = { Text("Plan: if that happens, I will...") }, modifier = Modifier.fillMaxWidth())
 }
 
 @Composable
 fun HorizonChoice(selected: Horizon, onSelect: (Horizon) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    ChipRow {
         Horizon.entries.forEach {
-            FilterChip(selected = it == selected, onClick = { onSelect(it) }, label = { Text(it.label, maxLines = 1) })
+            KeelChip(selected = it == selected, onClick = { onSelect(it) }, label = { Text(it.label, maxLines = 1) })
         }
     }
 }
@@ -199,59 +269,65 @@ private fun GoalDetail(model: AppModel, goalId: Long, onClose: () -> Unit) {
     var dropping by remember { mutableStateOf(false) }
     val loaded = data ?: return
     val goal = loaded.goal ?: return
-    Page(goal.title, goal.horizon.label) {
-        TextButton(onClose) { Text("Back") }
+    Page(goal.title, goal.horizon.label, onBack = onClose) {
         val doc = loaded.doc
         if (doc != null) {
             PlanPanel(model, doc, goal, onDeleted = onClose)
-        } else {
+        } else if (goal.outcome.isNotEmpty() || goal.obstacle.isNotEmpty() || goal.plan.isNotEmpty()) {
             Panel {
                 if (goal.outcome.isNotEmpty()) Muted("Outcome: ${goal.outcome}")
                 if (goal.obstacle.isNotEmpty()) Muted("Obstacle: ${goal.obstacle}")
                 if (goal.plan.isNotEmpty()) Muted("Plan: ${goal.plan}")
             }
         }
-        SectionTitle("Steps")
-        if (loaded.steps.isEmpty()) Muted(if (doc != null) "This plan has no [ ] lines, so it's for reading." else "No steps yet. What's the smallest next step?")
-        var lastSection: String? = null
+        if (loaded.steps.isEmpty()) {
+            SectionTitle("Steps")
+            Muted(if (doc != null) "This plan has no [ ] lines, so it's for reading." else "No steps yet. What's the smallest next step?")
+        }
+        // Consecutive steps from one section share a card, so long plans stay easy to scan.
+        val sections = mutableListOf<MutableList<PlanStep>>()
         loaded.steps.forEach { step ->
-            if (doc != null && step.source != null && step.source != lastSection) {
-                lastSection = step.source
-                Text(step.source.orEmpty(), style = MaterialTheme.typography.titleSmall)
-            }
+            if (sections.isEmpty() || (doc != null && sections.last().last().source != step.source)) sections += mutableListOf<PlanStep>()
+            sections.last() += step
+        }
+        sections.forEach { section ->
+            SectionTitle(if (doc != null) section.first().source ?: "Steps" else "Steps")
             Panel {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(step.doneAt != null, { model.act { setStepDone(step, it) } })
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            step.title,
-                            textDecoration = if (step.doneAt != null) TextDecoration.LineThrough else null,
-                        )
-                        step.estimateMinutes?.let { Muted("$it min") }
-                        step.ifThen?.let { Muted(it) }
-                    }
-                    if (step.doneAt == null) {
-                        TextButton({
-                            model.act {
-                                addTask(step.title, LocalDate.now(), step.id, "Step of \"${goal.title}\"", step.estimateMinutes)
-                                touchGoal(goal.id)
-                            }
-                        }) { Text("Today") }
+                section.forEach { step ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        KeelCheck(step.doneAt != null, { model.act { setStepDone(step, it) } }, Modifier.offset { IntOffset((-12).dp.roundToPx(), 0) })
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                step.title,
+                                color = if (step.doneAt != null) KeelColor.TextSecondary else KeelColor.Text,
+                                textDecoration = if (step.doneAt != null) TextDecoration.LineThrough else null,
+                            )
+                            step.estimateMinutes?.let { Text("$it min", style = MaterialTheme.typography.bodySmall, color = KeelColor.TextSecondary) }
+                            step.ifThen?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = KeelColor.TextSecondary) }
+                        }
+                        if (step.doneAt == null) {
+                            KeelTextButton({
+                                model.act {
+                                    addTask(step.title, LocalDate.now(), step.id, "Step of \"${goal.title}\"", step.estimateMinutes)
+                                    touchGoal(goal.id)
+                                }
+                            }) { Text("Today") }
+                        }
                     }
                 }
             }
         }
-        OutlinedButton({ addingStep = true }, Modifier.fillMaxWidth()) { Text("Add a step") }
+        KeelSecondaryButton({ addingStep = true }, Modifier.fillMaxWidth()) { Text("Add a step") }
         if (goal.status == GoalStatus.ACTIVE || goal.status == GoalStatus.COOLING) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(
+                KeelSecondaryButton(
                     {
                         model.act { endGoal(goal.id, GoalStatus.DONE, null) }
                         onClose()
                     },
                     Modifier.weight(1f),
                 ) { Text("Mark done") }
-                OutlinedButton({ dropping = true }, Modifier.weight(1f)) { Text("Drop goal") }
+                KeelTextButton({ dropping = true }, Modifier.weight(1f)) { Text("Drop goal", color = KeelColor.Danger) }
             }
         }
     }
@@ -276,10 +352,10 @@ private fun DropGoalDialog(onDrop: (String?) -> Unit, onCancel: () -> Unit) {
         onDismissRequest = onCancel,
         title = { Text("Drop this goal?") },
         text = {
-            OutlinedTextField(reason, { reason = it }, label = { Text("Why? (optional)") }, modifier = Modifier.fillMaxWidth())
+            KeelTextField(reason, { reason = it }, label = { Text("Why? (optional)") }, modifier = Modifier.fillMaxWidth())
         },
-        confirmButton = { TextButton({ onDrop(reason.trim().ifEmpty { null }) }) { Text("Drop") } },
-        dismissButton = { TextButton(onCancel) { Text("Keep") } },
+        confirmButton = { KeelTextButton({ onDrop(reason.trim().ifEmpty { null }) }) { Text("Drop") } },
+        dismissButton = { KeelTextButton(onCancel) { Text("Keep") } },
     )
 }
 
@@ -293,19 +369,19 @@ private fun AddStepDialog(model: AppModel, goal: Goal, onClose: () -> Unit) {
         title = { Text("Add a step") },
         text = {
             Column(Modifier.imePadding()) {
-                OutlinedTextField(title, { title = it }, label = { Text("Step") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(
+                KeelTextField(title, { title = it }, label = { Text("Step") }, modifier = Modifier.fillMaxWidth())
+                KeelTextField(
                     minutes,
                     { minutes = it.filter(Char::isDigit).take(4) },
                     label = { Text("Minutes (optional)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(ifThen, { ifThen = it }, label = { Text("When X, I will Y (optional)") }, modifier = Modifier.fillMaxWidth())
+                KeelTextField(ifThen, { ifThen = it }, label = { Text("When X, I will Y (optional)") }, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
-            TextButton(
+            KeelTextButton(
                 enabled = title.isNotBlank(),
                 onClick = {
                     model.act {
@@ -315,31 +391,33 @@ private fun AddStepDialog(model: AppModel, goal: Goal, onClose: () -> Unit) {
                 },
             ) { Text("Add") }
         },
-        dismissButton = { TextButton(onClose) { Text("Cancel") } },
+        dismissButton = { KeelTextButton(onClose) { Text("Cancel") } },
     )
 }
 
 private data class TodayData(val today: List<Task>, val overdue: List<Task>)
 
+/** Today leads with what's due, then the list, then what your plans suggest next. */
 @Composable
 fun TodayScreen(model: AppModel) {
     val date = LocalDate.now()
     val data by loadState(model) { TodayData(tasks(date), overdueTasks(date)) }
     var text by remember { mutableStateOf("") }
-    Page("Today") {
+    Page("Today", overline = date.format(DateTimeFormatter.ofPattern("EEEE d MMMM"))) {
         val loaded = data ?: return@Page
         // Overdue items count, so "done" is only ever true.
         when (val state = dayState(loaded.today + loaded.overdue)) {
             DayState.Empty -> Muted("Nothing planned yet. Add what matters, or pick from your plans below.")
-            is DayState.InProgress -> Muted("${state.left} left, ${state.done} done.")
-            is DayState.Finished -> Panel {
-                Text("You're done for today.", style = MaterialTheme.typography.titleLarge)
-                Muted("That was everything, and there's nothing more to do here.")
+            is DayState.InProgress -> Panel {
+                Text("${state.done} of ${state.left + state.done} done", style = MaterialTheme.typography.titleMedium.tabular)
+                KeelProgress(state.done.toFloat() / (state.left + state.done))
             }
+            is DayState.Finished -> DayFinishedCard()
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(text, { text = it }, label = { Text("Add for today") }, modifier = Modifier.weight(1f))
-            Button(
+        DeadlinesSection(model, date)
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            KeelTextField(text, { text = it }, label = { Text("Add for today") }, modifier = Modifier.weight(1f))
+            KeelSecondaryButton(
                 enabled = text.isNotBlank(),
                 onClick = {
                     val title = text.trim()
@@ -348,29 +426,58 @@ fun TodayScreen(model: AppModel) {
                 },
             ) { Text("Add") }
         }
-        loaded.today.forEach { TaskRow(model, it, date) }
+        if (loaded.today.isNotEmpty()) {
+            Panel { loaded.today.forEach { TaskRow(model, it, date) } }
+        }
         if (loaded.overdue.isNotEmpty()) {
             SectionTitle("From earlier days")
             Muted("Move these to today, or let them go.")
-            loaded.overdue.forEach { TaskRow(model, it, date) }
+            Panel { loaded.overdue.forEach { TaskRow(model, it, date) } }
         }
         PlanPicksSection(model, date)
     }
 }
 
+/** A rare, earned moment, so it's allowed one quiet entrance. */
+@Composable
+private fun DayFinishedCard() {
+    val animate = motionEnabled()
+    var shown by remember { mutableStateOf(!animate) }
+    LaunchedEffect(Unit) { shown = true }
+    val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(KeelMotion.PROGRESS_MS, easing = KeelMotion.EaseOut), label = "doneFade")
+    val rise by animateDpAsState(if (shown) 0.dp else 12.dp, tween(KeelMotion.PROGRESS_MS, easing = KeelMotion.EaseOut), label = "doneRise")
+    Column(Modifier.graphicsLayer { this.alpha = alpha; translationY = rise.toPx() }) {
+        Panel {
+            Text("You're done for today.", style = MaterialTheme.typography.titleLarge)
+            Muted("That was everything, and there's nothing more to do here.")
+        }
+    }
+}
+
 @Composable
 private fun TaskRow(model: AppModel, task: Task, today: LocalDate) {
-    Panel {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(task.doneAt != null, { model.act { setTaskDone(task, it) } })
-            Column(Modifier.weight(1f)) {
-                Text(task.title, textDecoration = if (task.doneAt != null) TextDecoration.LineThrough else null)
-                task.source?.let { Muted("From: $it") }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        KeelCheck(task.doneAt != null, { model.act { setTaskDone(task, it) } }, Modifier.offset { IntOffset((-12).dp.roundToPx(), 0) })
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                task.title,
+                color = if (task.doneAt != null) KeelColor.TextSecondary else KeelColor.Text,
+                textDecoration = if (task.doneAt != null) TextDecoration.LineThrough else null,
+            )
+            val due = findDeadline(task.title)
+            if (due != null && task.doneAt == null) {
+                val days = ChronoUnit.DAYS.between(today, due)
+                Text(
+                    deadlineLabel(days),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (days < 0) KeelColor.Danger else KeelColor.TextSecondary,
+                )
             }
-            if (task.day != today) {
-                TextButton({ model.act { moveTask(task.id, today) } }) { Text("Today") }
-                TextButton({ model.act { deleteTask(task.id) } }) { Text("Drop") }
-            }
+            task.source?.let { Text("From: $it", style = MaterialTheme.typography.bodySmall, color = KeelColor.TextSecondary) }
+        }
+        if (task.day != today) {
+            KeelTextButton({ model.act { moveTask(task.id, today) } }) { Text("Today") }
+            KeelTextButton({ model.act { deleteTask(task.id) } }) { Text("Drop") }
         }
     }
 }

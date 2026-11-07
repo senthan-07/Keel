@@ -12,11 +12,21 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Install from the same computer each time: the app is signed with `~/.android/debug.keystore`, and a different key would force an uninstall, which deletes the database.
 
+## Build a release
+
+```fish
+./gradlew :app:assembleRelease
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+
+It's optimised, and signed with the same local key as debug so it updates your installed app and keeps your data. Publishing would need a dedicated release key.
+
 ## Check
 
 ```fish
 ./gradlew :domain:test      # Rules: ranking, commitments, sessions, weekly stats
 scripts/check_no_internet.sh  # Fails if the APK requests network access
+./gradlew :app:lintDebug      # Android lint
 ```
 
 ## Layout
@@ -25,12 +35,30 @@ scripts/check_no_internet.sh  # Fails if the APK requests network access
 - `app/`: encrypted storage (`data/`), pause system (`pause/`), screens (`ui/`)
 - `spike/`: throwaway Phase 0 test app
 
+## Design
+
+Dark and minimal, built from `app/src/main/java/dev/keel/app/ui/Design.kt`. Screens use its tokens and components, not raw colours.
+
+| Token | Value | Use |
+|---|---|---|
+| Page | `#0A0A0A` | Background |
+| Surface | `#141414` | Cards and dialogs |
+| Elevated | `#222222` | Secondary buttons, selected chips, tracks |
+| Text | `#F5F5F5` | Reading text |
+| Secondary text | `#A1A1AA` | Supporting text |
+| Accent | `#007BA7` | Primary fill, outlines, icons, progress. Never small text (3.3-4.1:1) |
+| Danger | `#FF2950` | Only danger, overdue and over budget |
+
+Type is Inter (SIL Open Font License, see `app/src/main/assets/licenses/`), bundled so nothing is downloaded. Motion uses a 0.96 press scale, a strong ease-out, nothing over 300 ms, and skips movement when the phone's animations are off.
+
+See `TODO.md` for what's left.
+
 ## Features
 
 - **Rules:** pause, time limit, task-locked and Sprint, with commitment rules, for whole apps or YouTube Shorts
-- **Plans:** Horizons, Today, imported Markdown plans, typed money goals
+- **Plans:** Horizons, Today with deadlines, imported Markdown plans, typed money goals
 - **Review:** abandoned opens, weekly check-in, time budgets, a self-set time-to-money rule, and an on and off experiment
-- **Your data:** live privacy check, backup, restore, export and delete
+- **Your data:** live privacy check, backup with an optional weekly automatic copy, restore, export and delete
 
 ## Data
 

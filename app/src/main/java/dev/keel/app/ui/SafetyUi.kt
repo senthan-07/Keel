@@ -5,13 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,9 +38,9 @@ fun PrivacyPanel(model: AppModel) {
         when {
             loaded == null -> Muted("Checking...")
             loaded.networkPermissions.isEmpty() && loaded.socketRefused -> {
-                Text("Checked just now on this phone:", color = MaterialTheme.colorScheme.primary)
-                Text("Keel doesn't ask for internet access.")
-                Text("Android refused Keel a network connection.")
+                Muted("Checked just now on this phone")
+                StatusLine("Keel doesn't ask for internet access")
+                StatusLine("Android refused Keel a network connection")
             }
             else -> Text(
                 "Warning: this check failed, so don't rely on the claims below. " +
@@ -79,7 +74,7 @@ fun SavedBackupsSection(model: AppModel) {
                     Text(backup.name)
                     Muted("${savedDate(backup.savedAt)}, ${backup.bytes / 1024} KB")
                 }
-                TextButton({ confirming = backup }) { Text("Delete") }
+                KeelTextButton({ confirming = backup }) { Text("Delete") }
             }
         }
     }
@@ -99,7 +94,7 @@ fun SavedBackupsSection(model: AppModel) {
                 )
             },
             confirmButton = {
-                TextButton({
+                KeelTextButton({
                     confirming = null
                     scope.launch {
                         val deleted = withContext(Dispatchers.IO) {
@@ -110,7 +105,7 @@ fun SavedBackupsSection(model: AppModel) {
                     }
                 }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton({ confirming = null }) { Text("Keep") } },
+            dismissButton = { KeelTextButton({ confirming = null }) { Text("Keep") } },
         )
     }
 }
@@ -128,11 +123,9 @@ fun DeleteEverythingSection(model: AppModel) {
     var error by remember { mutableStateOf<String?>(null) }
     Panel {
         Text("Removes every goal, task, rule, pause record and usage record from Keel, including its copy of your recovery phrase.")
-        OutlinedButton(
-            { open = true; typed = ""; error = null },
-            Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-        ) { Text("Delete all my Keel data") }
+        KeelSecondaryButton({ open = true; typed = ""; error = null }, Modifier.fillMaxWidth()) {
+            Text("Delete all my Keel data", color = KeelColor.Danger)
+        }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
     if (open) {
@@ -143,7 +136,7 @@ fun DeleteEverythingSection(model: AppModel) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("This can't be undone. Keel returns to its first screen, and stops pausing apps.")
                     Text("Backup files aren't deleted. To restore one later, you'll need your written-down recovery phrase.")
-                    OutlinedTextField(
+                    KeelTextField(
                         typed,
                         { typed = it },
                         label = { Text("Type DELETE to confirm") },
@@ -153,9 +146,8 @@ fun DeleteEverythingSection(model: AppModel) {
                 }
             },
             confirmButton = {
-                Button(
+                KeelDangerButton(
                     enabled = typed.trim() == "DELETE",
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     onClick = {
                         open = false
                         scope.launch {
@@ -170,7 +162,7 @@ fun DeleteEverythingSection(model: AppModel) {
                     },
                 ) { Text("Delete everything") }
             },
-            dismissButton = { TextButton({ open = false }) { Text("Cancel") } },
+            dismissButton = { KeelTextButton({ open = false }) { Text("Cancel") } },
         )
     }
 }

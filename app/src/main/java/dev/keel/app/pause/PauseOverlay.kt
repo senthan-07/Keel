@@ -1,8 +1,10 @@
 package dev.keel.app.pause
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -11,10 +13,13 @@ import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.view.animation.PathInterpolator
 import android.widget.LinearLayout
 import android.widget.TextView
+import dev.keel.app.R
 import dev.keel.domain.Choice
 import dev.keel.domain.PauseSuggestion
 
@@ -89,14 +94,14 @@ class PauseOverlay(
 
     private fun renderChoices(layout: LinearLayout) {
         layout.removeAllViews()
-        layout.addView(text("Pause", 34f, bold = true))
+        layout.addView(text("Pause", 40f, weight = 600))
         layout.addView(text("You were opening $appLabel.", 15f, MUTED, bottom = if (headline == null) 28 else 10))
-        headline?.let { layout.addView(text(it, 16f, ACCENT, bottom = 28)) }
+        headline?.let { layout.addView(text(it, 16f, weight = 500, bottom = 28)) }
         if (suggestion != null) {
             val minutes = suggestion.estimateMinutes?.let { " ($it min)" }.orEmpty()
             // Imported plan steps can be very long, and the buttons must stay on screen.
             layout.addView(
-                text("Next step: ${suggestion.title}$minutes", 19f).apply {
+                text("Next step: ${suggestion.title}$minutes", 20f, weight = 600).apply {
                     maxLines = 4
                     ellipsize = android.text.TextUtils.TruncateAt.END
                 },
@@ -112,7 +117,7 @@ class PauseOverlay(
             layout.addView(spacer(24))
             layout.addView(button("Do it now", primary = true) { onChoice(Choice.DO_IT_NOW, null) })
         } else {
-            layout.addView(text("Nothing is planned next. Is this what you want to do?", 18f, bottom = 24))
+            layout.addView(text("Nothing is planned next. Is this what you want to do?", 20f, weight = 600, bottom = 24))
         }
         layout.addView(button("Don't open", primary = suggestion == null) { onChoice(Choice.DONT_OPEN, null) })
         val open = button("Open for 5 min", primary = false) { renderReasons(layout) }
@@ -129,14 +134,14 @@ class PauseOverlay(
         }
         view.text = "Open in ${left}s"
         view.isEnabled = false
-        view.alpha = 0.5f
+        view.alpha = 0.6f
         handler.postDelayed({ countdown(view, left - 1) }, 1000)
     }
 
     /** One honest tap about why, which feeds the Sunday review. */
     private fun renderReasons(layout: LinearLayout) {
         layout.removeAllViews()
-        layout.addView(text("Why are you opening it?", 22f, bottom = 24))
+        layout.addView(text("Why are you opening it?", 24f, weight = 600, bottom = 24))
         for (reason in REASONS) {
             layout.addView(button(reason, primary = false) { onChoice(Choice.OPEN, reason) })
         }
@@ -144,13 +149,18 @@ class PauseOverlay(
         layout.addView(button("Never mind, don't open", primary = true) { onChoice(Choice.DONT_OPEN, null) })
     }
 
-    private fun text(value: String, size: Float, color: Int = Color.WHITE, bold: Boolean = false, bottom: Int = 10) =
+    /** Inter, matching the app. Falls back to the system font if it can't be loaded. */
+    private fun font(weight: Int): Typeface = runCatching {
+        Typeface.create(context.resources.getFont(R.font.inter_variable), weight, false)
+    }.getOrDefault(Typeface.DEFAULT)
+
+    private fun text(value: String, size: Float, color: Int = TEXT, weight: Int = 400, bottom: Int = 10) =
         TextView(context).apply {
             text = value
             textSize = size
             setTextColor(color)
             gravity = Gravity.CENTER
-            if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
+            typeface = font(weight)
             setPadding(0, 0, 0, dp(bottom))
         }
 
@@ -161,20 +171,39 @@ class PauseOverlay(
     private fun button(label: String, primary: Boolean, onClick: () -> Unit) = TextView(context).apply {
         text = label
         textSize = 16f
+        typeface = font(600)
+        fontFeatureSettings = "tnum"
         gravity = Gravity.CENTER
-        setTextColor(if (primary) BACKGROUND else Color.WHITE)
+        setTextColor(TEXT)
         background = GradientDrawable().apply {
-            cornerRadius = dp(26).toFloat()
-            if (primary) setColor(ACCENT) else setStroke(dp(1), MUTED)
+            cornerRadius = dp(16).toFloat()
+            setColor(if (primary) ACCENT else ELEVATED)
         }
-        val vertical = dp(14)
+        val vertical = dp(16)
         setPadding(dp(16), vertical, dp(16), vertical)
         isClickable = true
         setOnClickListener { onClick() }
+        // Returning false leaves the tap to the click listener, so screen readers still work.
+        @Suppress("ClickableViewAccessibility")
+        setOnTouchListener { view, event ->
+            pressFeedback(view, event)
+            false
+        }
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(12) }
+    }
+
+    /** The same 0.96 press as the app, skipped when animations are off or the button is disabled. */
+    private fun pressFeedback(view: View, event: MotionEvent) {
+        if (!view.isEnabled || !ValueAnimator.areAnimatorsEnabled()) return
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> view.animate().scaleX(0.96f).scaleY(0.96f).setDuration(150)
+                .setInterpolator(PathInterpolator(0.23f, 1f, 0.32f, 1f)).start()
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> view.animate().scaleX(1f).scaleY(1f).setDuration(150)
+                .setInterpolator(PathInterpolator(0.23f, 1f, 0.32f, 1f)).start()
+        }
     }
 
     private fun dp(value: Int): Int = TypedValue.applyDimension(
@@ -184,9 +213,11 @@ class PauseOverlay(
     ).toInt()
 
     private companion object {
-        val BACKGROUND = Color.parseColor("#FF101820")
-        val ACCENT = Color.parseColor("#FFF2C14E")
-        val MUTED = Color.parseColor("#FFA9B4BE")
+        val BACKGROUND = Color.parseColor("#FF0A0A0A")
+        val ELEVATED = Color.parseColor("#FF222222")
+        val ACCENT = Color.parseColor("#FF007BA7")
+        val TEXT = Color.parseColor("#FFF5F5F5")
+        val MUTED = Color.parseColor("#FFA1A1AA")
         val REFOCUS_MS = listOf(800L, 2000L)
         val REASONS = listOf("Something specific", "Planned break", "Replying to someone", "Just bored")
     }

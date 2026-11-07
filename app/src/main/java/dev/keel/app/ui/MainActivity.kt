@@ -5,31 +5,49 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Landscape
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Landscape
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import dev.keel.app.KeelApp
 import dev.keel.app.data.Repo
@@ -57,12 +75,12 @@ class AppModel(val repo: Repo, private val scope: CoroutineScope) {
     }
 }
 
-enum class Screen(val label: String, val icon: ImageVector) {
-    HORIZONS("Horizons", Icons.Filled.Home),
-    TODAY("Today", Icons.Filled.DateRange),
-    RULES("Rules", Icons.Filled.Lock),
-    REVIEW("Review", Icons.Filled.Star),
-    DATA("Your data", Icons.Filled.Info),
+enum class Screen(val label: String, val icon: ImageVector, val selectedIcon: ImageVector) {
+    HORIZONS("Horizons", Icons.Outlined.Landscape, Icons.Filled.Landscape),
+    TODAY("Today", Icons.Outlined.CheckCircle, Icons.Filled.CheckCircle),
+    RULES("Rules", Icons.Outlined.Shield, Icons.Filled.Shield),
+    REVIEW("Review", Icons.Outlined.BarChart, Icons.Filled.BarChart),
+    DATA("Your data", Icons.Outlined.Lock, Icons.Filled.Lock),
 }
 
 class MainActivity : ComponentActivity() {
@@ -75,8 +93,8 @@ class MainActivity : ComponentActivity() {
         model = AppModel((application as KeelApp).repo, lifecycleScope)
         applyIntent(intent)
         setContent {
-            MaterialTheme(colorScheme = KeelColors) {
-                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            KeelTheme {
+                Surface(Modifier.fillMaxSize(), color = KeelColor.Page) {
                     Root(model, screen) { screen = it }
                 }
             }
@@ -110,44 +128,20 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private val KeelColors = darkColorScheme(
-    primary = Color(0xFFF2C14E),
-    onPrimary = Color(0xFF101820),
-    secondaryContainer = Color(0xFF2B3A47),
-    onSecondaryContainer = Color(0xFFF4F6F8),
-    background = Color(0xFF101820),
-    onBackground = Color(0xFFF4F6F8),
-    surface = Color(0xFF101820),
-    onSurface = Color(0xFFF4F6F8),
-    surfaceVariant = Color(0xFF1C2833),
-    onSurfaceVariant = Color(0xFFA9B4BE),
-    surfaceContainer = Color(0xFF1C2833),
-    surfaceContainerHigh = Color(0xFF243240),
-    outline = Color(0xFF5A6B79),
-    error = Color(0xFFFF8A80),
-)
-
 @Composable
 private fun Root(model: AppModel, screen: Screen, onScreen: (Screen) -> Unit) {
     val onboarded by loadState(model) { setting("onboarded") ?: "false" }
     when (onboarded) {
         null -> Box(Modifier.fillMaxSize())
-        "true" -> Scaffold(
-            bottomBar = {
-                NavigationBar {
-                    Screen.entries.forEach {
-                        NavigationBarItem(
-                            selected = it == screen,
-                            onClick = { onScreen(it) },
-                            icon = { Icon(it.icon, contentDescription = null) },
-                            label = { Text(it.label, maxLines = 1) },
-                        )
-                    }
-                }
-            },
-        ) { padding ->
-            Box(Modifier.padding(padding)) {
-                when (screen) {
+        "true" -> Column(Modifier.fillMaxSize()) {
+            // Tabs are switched many times a day, so they get a short fade and no movement.
+            Crossfade(
+                screen,
+                Modifier.weight(1f),
+                tween(KeelMotion.STATE_MS, easing = KeelMotion.EaseOut),
+                label = "tabs",
+            ) { current ->
+                when (current) {
                     Screen.HORIZONS -> HorizonsScreen(model)
                     Screen.TODAY -> TodayScreen(model)
                     Screen.RULES -> RulesScreen(model)
@@ -155,7 +149,49 @@ private fun Root(model: AppModel, screen: Screen, onScreen: (Screen) -> Unit) {
                     Screen.DATA -> DataScreen(model)
                 }
             }
+            KeelNavBar(screen, onScreen)
         }
         else -> OnboardingScreen(model)
+    }
+}
+
+@Composable
+private fun KeelNavBar(selected: Screen, onSelect: (Screen) -> Unit) {
+    Column(Modifier.background(KeelColor.Page)) {
+        HorizontalDivider(color = KeelColor.Elevated, thickness = 1.dp)
+        Row(Modifier.fillMaxWidth().navigationBarsPadding().selectableGroup()) {
+            Screen.entries.forEach { screen ->
+                val isSelected = screen == selected
+                val source = remember { MutableInteractionSource() }
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .selectable(
+                            selected = isSelected,
+                            interactionSource = source,
+                            indication = null,
+                            role = Role.Tab,
+                            onClick = { onSelect(screen) },
+                        )
+                        .pressScale(source)
+                        .padding(top = 10.dp, bottom = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(
+                        if (isSelected) screen.selectedIcon else screen.icon,
+                        contentDescription = null,
+                        tint = if (isSelected) KeelColor.Accent else KeelColor.TextSecondary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Text(
+                        screen.label,
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.sp),
+                        color = if (isSelected) KeelColor.Text else KeelColor.TextSecondary,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
     }
 }

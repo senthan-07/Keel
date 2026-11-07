@@ -64,5 +64,15 @@ object LocalBackups {
         return saved
     }
 
+    /** Keeps only the newest automatic backups. Backups you made yourself are never touched. */
+    fun pruneAutomatic(context: Context, keep: Int = AUTO_KEEP) {
+        list(context).filter { it.name.startsWith(AUTO_PREFIX) }.drop(keep).forEach {
+            runCatching { delete(context, it.uri) }
+        }
+    }
+
+    const val AUTO_PREFIX = "keel-auto-"
+    private const val AUTO_KEEP = 4
+
     fun delete(context: Context, uri: Uri): Boolean = context.contentResolver.delete(uri, null, null) > 0
 }

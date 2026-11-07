@@ -65,7 +65,7 @@ fun coolingDaysLeft(until: Long, now: Long): Long {
 }
 
 enum class GoalSort(val label: String) {
-    MONTHS_RETURNED("Months returned"), LAST_TOUCHED("Last touched"), NEWEST("Newest")
+    MONTHS_RETURNED("Most returned"), LAST_TOUCHED("Recent"), NEWEST("Newest")
 }
 
 data class RankedGoal(val goal: Goal, val monthsReturned: Int, val lastTouch: Long?)
@@ -105,7 +105,7 @@ const val STALLED_AFTER_DAYS = 14L
 /** A plan's real state, for example "3 of 8 steps, stalled 21 days", rather than its ambitious title. */
 fun realState(steps: List<PlanStep>, lastTouch: Long?, now: Long): String {
     val parts = mutableListOf<String>()
-    parts += if (steps.isEmpty()) "No steps yet" else "${steps.count { it.doneAt != null }} of ${steps.size} steps"
+    parts += if (steps.isEmpty()) "No steps yet" else "${steps.count { it.doneAt != null }} of ${steps.size} ${if (steps.size == 1) "step" else "steps"}"
     if (lastTouch != null) {
         val idle = Duration.ofMillis(now - lastTouch).toDays()
         if (idle >= STALLED_AFTER_DAYS) parts += "stalled $idle days"

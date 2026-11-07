@@ -7,6 +7,10 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,15 +18,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -72,7 +69,7 @@ fun RulesScreen(model: AppModel) {
         val loaded = rules ?: return@Page
         SprintPanel(model)
         loaded.forEach { RuleCard(model, it) }
-        OutlinedButton({ adding = true }, Modifier.fillMaxWidth()) { Text("Add apps") }
+        KeelSecondaryButton({ adding = true }, Modifier.fillMaxWidth()) { Text("Add apps") }
     }
     if (adding) {
         AddRulesDialog(
@@ -107,11 +104,11 @@ private fun RuleCard(model: AppModel, rule: Rule) {
                 Text(rule.label, style = MaterialTheme.typography.titleMedium)
                 Muted(describe(current))
             }
-            Switch(current.enabled, { on -> model.act { changeRule(rule, current.copy(enabled = on)) } })
+            KeelSwitch(current.enabled, { on -> model.act { changeRule(rule, current.copy(enabled = on)) } })
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        ChipRow {
             modes.forEach { mode ->
-                FilterChip(
+                KeelChip(
                     selected = mode == current.mode,
                     onClick = { model.act { changeRule(rule, current.copy(mode = mode)) } },
                     label = { Text(mode.label, maxLines = 1) },
@@ -121,9 +118,9 @@ private fun RuleCard(model: AppModel, rule: Rule) {
         when (current.mode) {
             RuleMode.LIMIT -> {
                 Muted("Minutes a day")
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                ChipRow {
                     LIMITS.forEach { minutes ->
-                        FilterChip(
+                        KeelChip(
                             selected = minutes == current.dailyLimitMinutes,
                             onClick = { model.act { changeRule(rule, current.copy(dailyLimitMinutes = minutes)) } },
                             label = { Text("$minutes", maxLines = 1) },
@@ -131,9 +128,9 @@ private fun RuleCard(model: AppModel, rule: Rule) {
                     }
                 }
             }
-            RuleMode.PAUSE -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            RuleMode.PAUSE -> ChipRow {
                 DELAYS.forEach { delay ->
-                    FilterChip(
+                    KeelChip(
                         selected = delay == current.delaySeconds,
                         onClick = { model.act { changeRule(rule, current.copy(delaySeconds = delay)) } },
                         label = { Text("${delay}s", maxLines = 1) },
@@ -148,7 +145,7 @@ private fun RuleCard(model: AppModel, rule: Rule) {
         val pending = rule.state.pending
         val at = rule.state.pendingAt
         if (pending != null && at != null) {
-            Text("Changes to \"${describe(pending)}\" on ${dayName(at)}.", color = MaterialTheme.colorScheme.primary)
+            StatusLine("Changes to \"${describe(pending)}\" on ${dayName(at)}", tone = Tone.Neutral)
         }
     }
 }
@@ -168,15 +165,15 @@ private fun SprintPanel(model: AppModel) {
     Panel {
         Text("Sprint", style = MaterialTheme.typography.titleMedium)
         if (active) {
-            Text("Running until ${dayName(until ?: now)}.", color = MaterialTheme.colorScheme.primary)
+            StatusLine("Running until ${dayName(until ?: now)}")
             Muted("Every rule that's on waits $EMERGENCY_DELAY_SECONDS seconds, including time limits and finished lists.")
-            OutlinedButton({ ending = true }, Modifier.fillMaxWidth()) { Text("End early") }
+            KeelSecondaryButton({ ending = true }, Modifier.fillMaxWidth()) { Text("End early") }
         } else {
             Muted("Make every rule that's on stricter for a set time. You can still get through after a $EMERGENCY_DELAY_SECONDS-second wait.")
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        ChipRow {
             SPRINT_DAYS.forEach { days ->
-                FilterChip(selected = false, onClick = { startDays = days }, label = { Text(if (days == 1) "1 day" else "$days days", maxLines = 1) })
+                KeelChip(selected = false, onClick = { startDays = days }, label = { Text(if (days == 1) "1 day" else "$days days", maxLines = 1) })
             }
         }
     }
@@ -186,12 +183,12 @@ private fun SprintPanel(model: AppModel) {
             title = { Text("Start a Sprint for ${if (days == 1) "1 day" else "$days days"}?") },
             text = { Text("It starts now. Ending it early only takes effect next Monday, because a commitment is easiest to break on impulse.") },
             confirmButton = {
-                TextButton({
+                KeelTextButton({
                     startDays = null
                     model.act { setSprintUntil(startSprint(sprintUntil(), days, System.currentTimeMillis())) }
                 }) { Text("Start") }
             },
-            dismissButton = { TextButton({ startDays = null }) { Text("Cancel") } },
+            dismissButton = { KeelTextButton({ startDays = null }) { Text("Cancel") } },
         )
     }
     if (ending) {
@@ -201,12 +198,12 @@ private fun SprintPanel(model: AppModel) {
             title = { Text("End this Sprint early?") },
             text = { Text("It will end on ${dayName(endsAt)}.") },
             confirmButton = {
-                TextButton({
+                KeelTextButton({
                     ending = false
                     model.act { setSprintUntil(endsAt) }
                 }) { Text("End then") }
             },
-            dismissButton = { TextButton({ ending = false }) { Text("Keep going") } },
+            dismissButton = { KeelTextButton({ ending = false }) { Text("Keep going") } },
         )
     }
 }
@@ -229,11 +226,11 @@ private fun AddRulesDialog(
             AppPicker(apps, surfaces, pickedApps, { pickedApps = it }, pickedSurfaces, { pickedSurfaces = it })
         },
         confirmButton = {
-            TextButton({
+            KeelTextButton({
                 onAdd(apps.filter { it.pkg in pickedApps }, surfaces.filter { it.id in pickedSurfaces })
             }) { Text("Add") }
         },
-        dismissButton = { TextButton(onCancel) { Text("Cancel") } },
+        dismissButton = { KeelTextButton(onCancel) { Text("Cancel") } },
     )
 }
 
@@ -271,8 +268,16 @@ private fun PickRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit
             .toggleable(checked, role = Role.Checkbox, onValueChange = onChange),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Checkbox(checked, null, Modifier.padding(12.dp))
+        KeelCheck(checked, null)
         Text(label)
+    }
+}
+
+@Composable
+private fun ValueRow(label: String, value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        Text(value, style = MaterialTheme.typography.bodyMedium.tabular, color = KeelColor.TextSecondary)
     }
 }
 
@@ -319,40 +324,53 @@ fun ReviewScreen(model: AppModel) {
         Muted("Week starting $title")
         Panel {
             val percent = loaded.stats.abandonedPercent
-            Text(
-                if (percent == null) "No pauses yet" else "$percent% of opens abandoned",
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            Muted("${loaded.stats.abandoned} changed your mind, ${loaded.stats.opened} opened anyway.")
+            if (percent == null) {
+                Text("No pauses yet", style = MaterialTheme.typography.headlineSmall)
+                Muted("Opens you change your mind about will show here.")
+            } else {
+                Stat("$percent%", "of opens abandoned")
+                KeelProgress(percent / 100f)
+                Muted("${loaded.stats.abandoned} changed your mind, ${loaded.stats.opened} opened anyway")
+            }
         }
-        Panel {
-            Text("Done: ${loaded.stepsDone} plan ${if (loaded.stepsDone == 1) "step" else "steps"}, ${loaded.tasksDone} ${if (loaded.tasksDone == 1) "task" else "tasks"}")
-            Muted("You finished something on ${loaded.daysDone} of the last 30 days.")
+        Row(horizontalArrangement = Arrangement.spacedBy(KeelSpace.Item)) {
+            Column(Modifier.weight(1f)) {
+                Panel { Stat("${loaded.stepsDone + loaded.tasksDone}", "done this week") }
+            }
+            Column(Modifier.weight(1f)) {
+                Panel { Stat("${loaded.daysDone}/30", "days you finished something") }
+            }
         }
         if (loaded.stats.byTarget.isNotEmpty()) {
             SectionTitle("Pauses by app")
-            loaded.stats.byTarget.entries.sortedByDescending { it.value }.forEach {
-                Muted("${loaded.labels[it.key] ?: it.key}: ${it.value}")
+            Panel {
+                loaded.stats.byTarget.entries.sortedByDescending { it.value }.forEach {
+                    ValueRow(loaded.labels[it.key] ?: it.key, "${it.value}")
+                }
             }
         }
         if (loaded.stats.reasons.isNotEmpty()) {
             SectionTitle("Why you opened anyway")
-            loaded.stats.reasons.entries.sortedByDescending { it.value }.forEach { Muted("${it.key}: ${it.value}") }
+            Panel {
+                loaded.stats.reasons.entries.sortedByDescending { it.value }.forEach { ValueRow(it.key, "${it.value}") }
+            }
         }
         if (loaded.usage.isNotEmpty()) {
             SectionTitle("Most-used apps")
             val home = homePackage(context)
-            loaded.usage.filter { it.pkg != home && it.pkg != context.packageName }.take(5)
-                .forEach { Muted("${appLabel(context, it.pkg)}: ${it.minutes} min") }
+            Panel {
+                loaded.usage.filter { it.pkg != home && it.pkg != context.packageName }.take(5)
+                    .forEach { ValueRow(appLabel(context, it.pkg), "${it.minutes} min") }
+            }
         }
         CheckInPanel(model, weekStart(LocalDate.now()))
         TimeBudgetsSection(model, loaded.week)
         ExperimentSection(model)
         if (loaded.due) {
             SectionTitle("One rule to change")
-            OutlinedTextField(ruleChange, { ruleChange = it }, label = { Text("What will you change, if anything?") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(note, { note = it }, label = { Text("Anything else to remember?") }, modifier = Modifier.fillMaxWidth())
-            Button(
+            KeelTextField(ruleChange, { ruleChange = it }, label = { Text("What will you change, if anything?") }, modifier = Modifier.fillMaxWidth())
+            KeelTextField(note, { note = it }, label = { Text("Anything else to remember?") }, modifier = Modifier.fillMaxWidth())
+            KeelButton(
                 onClick = {
                     model.act { saveReview(loaded.week, ruleChange.trim(), note.trim()) }
                     ruleChange = ""
@@ -384,14 +402,14 @@ fun DataScreen(model: AppModel) {
             }
         }
     }
-    Page("Your data") {
+    Page("Your data", "Encrypted, and only on this phone.") {
         PrivacyPanel(model)
         SectionTitle("Is Keel working?")
         val found = problems.orEmpty() + warnings.orEmpty()
         if (found.isEmpty()) {
-            Panel { Text("Yes. Every check passed.") }
+            Panel { StatusLine("Yes. Every check passed") }
         } else {
-            found.forEach { problem -> Panel { Text(problem, color = MaterialTheme.colorScheme.error) } }
+            Panel { found.forEach { problem -> StatusLine(problem, tone = Tone.Danger) } }
         }
         SectionTitle("Permissions")
         PermissionList(model)
@@ -401,12 +419,9 @@ fun DataScreen(model: AppModel) {
         SectionTitle("Export")
         Panel {
             Text("Save everything as one readable JSON file, to use elsewhere.")
-            Text(
-                "This file isn't encrypted, so keep it somewhere safe. Use Backup above to protect your data, " +
-                    "because an export can't be restored.",
-                color = MaterialTheme.colorScheme.error,
-            )
-            Button({ export.launch("keel-export-${LocalDate.now()}.json") }, Modifier.fillMaxWidth()) { Text("Export") }
+            StatusLine("This file isn't encrypted", tone = Tone.Danger)
+            Muted("Keep it somewhere safe. An export can't be restored, so use Backup to protect your data.")
+            KeelSecondaryButton({ export.launch("keel-export-${LocalDate.now()}.json") }, Modifier.fillMaxWidth()) { Text("Export") }
             message?.let { Muted(it) }
         }
         SectionTitle("Delete")
@@ -427,8 +442,10 @@ fun PermissionList(model: AppModel) {
         if (withPackage) intent.data = Uri.parse("package:${context.packageName}")
         context.startActivity(intent)
     }
+    // Before Android 13, notifications don't need permission.
     val notifications = remember(tick) {
-        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
     }
     val notify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { model.refresh() }
@@ -461,7 +478,9 @@ fun PermissionList(model: AppModel) {
                     .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
             )
         },
-    ) { notify.launch(Manifest.permission.POST_NOTIFICATIONS) }
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) notify.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
 }
 
 @Composable
@@ -479,12 +498,12 @@ private fun PermissionRow(
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleSmall)
                 Muted(why)
-                if (granted) Text("On", color = MaterialTheme.colorScheme.primary)
+                if (granted) StatusLine("On")
             }
             if (granted) {
-                TextButton({ warning = true }) { Text("Manage") }
+                KeelTextButton({ warning = true }) { Text("Manage") }
             } else {
-                TextButton(onOpen) { Text("Turn on") }
+                KeelTextButton(onOpen) { Text("Turn on") }
             }
         }
     }
@@ -494,13 +513,29 @@ private fun PermissionRow(
             title = { Text("Turn off $title?") },
             text = { Text("$ifTurnedOff\n\nYour data stays safe. Android makes you turn this off in Settings, so Keel will take you there.") },
             confirmButton = {
-                TextButton({
+                KeelTextButton({
                     warning = false
                     (onManage ?: onOpen)()
                 }) { Text("Open Settings") }
             },
-            dismissButton = { TextButton({ warning = false }) { Text("Keep it on") } },
+            dismissButton = { KeelTextButton({ warning = false }) { Text("Keep it on") } },
         )
+    }
+}
+
+/** Four segments, so setup always shows how far along you are. */
+@Composable
+private fun StepDots(current: Int) {
+    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        repeat(4) { index ->
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(4.dp)
+                    .clip(MaterialTheme.shapes.small)
+                    .background(if (index <= current) KeelColor.Accent else KeelColor.Elevated),
+            )
+        }
     }
 }
 
@@ -520,19 +555,22 @@ fun OnboardingScreen(model: AppModel) {
     var horizon by remember { mutableStateOf(Horizon.YEAR) }
     when (step) {
         0 -> Page("Keel", "A pause that knows what you're trying to do.") {
+            StepDots(0)
             Panel {
                 Text("When you open an app you chose, Keel pauses it and shows your next step. You can always carry on.")
             }
             PrivacyPanel(model)
-            Button({ step = 1 }, Modifier.fillMaxWidth()) { Text("Set up") }
+            KeelButton({ step = 1 }, Modifier.fillMaxWidth()) { Text("Set up") }
             RestoreSection(model, replacesData = false)
         }
         1 -> Page("Permissions", "Each one has a single job. You can turn any of them off later.") {
+            StepDots(1)
             PermissionList(model)
             Muted("Return here after each one.")
-            Button({ step = 2 }, Modifier.fillMaxWidth()) { Text("Next") }
+            KeelButton({ step = 2 }, Modifier.fillMaxWidth()) { Text("Next") }
         }
         2 -> Page("What pulls you in?", "Pick about 3. You can change this later.") {
+            StepDots(2)
             Panel {
                 Column(Modifier.fillMaxWidth()) {
                     surfaces.forEach { surface ->
@@ -547,13 +585,14 @@ fun OnboardingScreen(model: AppModel) {
                     }
                 }
             }
-            Button({ step = 3 }, Modifier.fillMaxWidth()) { Text("Next") }
+            KeelButton({ step = 3 }, Modifier.fillMaxWidth()) { Text("Next") }
         }
         else -> Page("One goal", "This is what the pause screen will point you towards.") {
+            StepDots(3)
             WoopFields(title, { title = it }, outcome, { outcome = it }, obstacle, { obstacle = it }, plan, { plan = it })
             HorizonChoice(horizon) { horizon = it }
-            OutlinedTextField(nextStep, { nextStep = it }, label = { Text("Smallest next step") }, modifier = Modifier.fillMaxWidth())
-            Button(
+            KeelTextField(nextStep, { nextStep = it }, label = { Text("Smallest next step") }, modifier = Modifier.fillMaxWidth())
+            KeelButton(
                 enabled = title.isNotBlank() && nextStep.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {

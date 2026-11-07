@@ -141,3 +141,30 @@ Run on the separate "Keel check" app with made-up plans.
 | App info on the phone | "No data used" for mobile data |
 
 **Not tested:** a full on and off week of the experiment, restarting the phone, overnight use, and battery drain, because the phone had only been off its charger for about a minute.
+
+## Redesign, deadlines and automatic backup (2026-11-07)
+
+Run on the optimised release build under the separate "Keel check" identity, with made-up data.
+
+| Check | Result |
+|---|---|
+| Rule unit tests | 95 of 95 pass |
+| Android lint | No errors. It found a real crash on Android 12 and below, now fixed |
+| Release build | About 5 MB, no network permissions |
+| Screens viewed on the phone | Setup, Horizons, Plans, plan page, Today, Rules, Review, Your data, delete dialog, pause screen |
+| Deadlines in Today | Overdue, upcoming and soonest-first, without repeating under From your plans |
+| Automatic backup, forced job run | One file written; a second run made no duplicate |
+| Restore from an automatic backup | Data came back |
+| Swapping debug for release | Data, key and phrase kept |
+| Shorts on the release build | Paused in 6 of 6, and the overlay left after Back each time |
+| Normal YouTube | No pause on the home tab or across 8 scrolls |
+| Audio behind the pause | None in the 6 checks |
+| Manage on Accessibility | Warning, then the right Settings screen |
+| Do it now and Don't open | Work on the release build |
+| Delete all | Returns to the first screen |
+
+**Not tested:** Open with a reason, time limit, Task-locked and Sprint on the redesigned build (the logic is unchanged and unit tested, and they worked on the previous build); plan import and export on the release build's redesigned action rows beyond a single import; automatic backup waiting a real week; restart; battery.
+
+Contrast, measured from the palette: text 14.6-18.2:1; secondary text 6.2-7.7:1; rose on page and surface 5.0-5.4:1; jet on rose fill 5.4:1; button label on Cerulean 4.39:1, just under 4.5:1.
+
+Design skills used: `emil-design-eng`, `better-ui`, `better-typography`, `better-colors`, `web-design-engineer`. No skill named after Jakub Krehel was found installed.

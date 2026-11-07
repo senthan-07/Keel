@@ -1,20 +1,17 @@
 package dev.keel.app.ui
 
-import android.app.Activity
 import android.net.Uri
 import android.view.WindowManager
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -29,7 +26,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.keel.app.data.BackupContents
-import dev.keel.app.data.LocalBackups
+import dev.keel.app.data.BackupWriter
 import dev.keel.app.data.Repo
 import dev.keel.domain.BackupException
 import dev.keel.domain.BackupFile
@@ -47,7 +44,7 @@ import java.time.format.DateTimeFormatter
 /** Blocks screenshots and the recent-apps preview while a recovery phrase is on screen. */
 @Composable
 private fun SecureScreen() {
-    val window = (LocalContext.current as? Activity)?.window
+    val window = LocalActivity.current?.window
     DisposableEffect(window) {
         window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
@@ -61,7 +58,7 @@ private fun PhraseText(phrase: String) {
 
 @Composable
 private fun PhraseField(value: String, onChange: (String) -> Unit, label: String) {
-    OutlinedTextField(
+    KeelTextField(
         value,
         onChange,
         label = { Text(label) },
@@ -102,7 +99,7 @@ fun BackupSection(model: AppModel) {
         busy = true
         message = "Saving and checking your backup..."
         scope.launch {
-            message = withContext(Dispatchers.IO) { writeAndCheck(context, model.repo, uri, phrase) }
+            message = withContext(Dispatchers.IO) { BackupWriter.writeAndCheck(context, model.repo, uri, phrase) }
             busy = false
             model.refresh()
         }
@@ -119,12 +116,12 @@ fun BackupSection(model: AppModel) {
                 Text(lastBackupLine(loaded.lastAt))
             }
             Muted("Saved in Download/Keel. It stays if Keel is uninstalled, but not if this phone is lost or reset, so copy it elsewhere from time to time.")
-            Button(
+            KeelButton(
                 {
                     busy = true
                     message = "Saving and checking your backup..."
                     scope.launch {
-                        message = withContext(Dispatchers.IO) { saveToPhone(context, model.repo, phrase!!) }
+                        message = withContext(Dispatchers.IO) { BackupWriter.saveToPhone(context, model.repo, phrase!!, "keel-backup-${LocalDate.now()}.keelbak") }
                         busy = false
                         model.refresh()
                     }
@@ -132,60 +129,31 @@ fun BackupSection(model: AppModel) {
                 Modifier.fillMaxWidth(),
                 enabled = !busy,
             ) { Text("Back up to this phone") }
-            OutlinedButton(
+            KeelSecondaryButton(
                 { create.launch("keel-backup-${LocalDate.now()}.keelbak") },
                 Modifier.fillMaxWidth(),
                 enabled = !busy,
             ) { Text("Choose another location") }
             message?.let { Muted(it) }
+            val auto by loadState(model) { autoBackupOn() }
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Back up every week", style = MaterialTheme.typography.titleSmall)
+                    Muted("Saves to Download/Keel and keeps the last 4 automatic copies.")
+                }
+                KeelSwitch(auto == true, { on -> model.act { setAutoBackup(on) } })
+            }
             SavedBackupsSection(model)
             if (showing) {
                 SecureScreen()
                 PhraseText(phrase)
-                TextButton({ showing = false }) { Text("Hide recovery phrase") }
+                KeelTextButton({ showing = false }) { Text("Hide recovery phrase") }
             } else {
-                TextButton({ showing = true }) { Text("Show recovery phrase") }
+                KeelTextButton({ showing = true }) { Text("Show recovery phrase") }
             }
         }
     }
 }
-
-/** Saves to Download/Keel. The file stays hidden until checked, and a failed one is removed. */
-private fun saveToPhone(context: android.content.Context, repo: Repo, phrase: String): String {
-    val uri = try {
-        LocalBackups.create(context, "keel-backup-${LocalDate.now()}.keelbak")
-    } catch (error: Exception) {
-        return "Backup failed: ${error.message}"
-    }
-    val result = writeAndCheck(context, repo, uri, phrase)
-    if (result.startsWith(BACKUP_OK)) {
-        LocalBackups.publish(context, uri)
-    } else {
-        runCatching { LocalBackups.delete(context, uri) }
-    }
-    return result
-}
-
-private const val BACKUP_OK = "Backup saved and checked"
-
-/** Saves the backup, then reads it back and decrypts it, so "saved" means it really can be restored. */
-private fun writeAndCheck(context: android.content.Context, repo: Repo, uri: Uri, phrase: String): String =
-    try {
-        val key = requireNotNull(RecoveryPhrase.normalize(phrase))
-        val payload = repo.exportJson(pretty = false).toByteArray()
-        val resolver = context.contentResolver
-        requireNotNull(resolver.openOutputStream(uri, "wt")) { "Couldn't open the file." }.use {
-            BackupFile.write(it, key, payload)
-        }
-        val back = requireNotNull(resolver.openInputStream(uri)) { "Couldn't read the file back." }.use {
-            BackupFile.read(it, key)
-        }
-        check(back.contentEquals(payload)) { "The saved file didn't match." }
-        repo.setSetting(Repo.LAST_BACKUP, System.currentTimeMillis().toString())
-        "$BACKUP_OK (${payload.size / 1024} KB of data)."
-    } catch (error: Exception) {
-        "Backup failed, so don't rely on that file: ${error.message}"
-    }
 
 /** Confirming part of the phrase means backups can't start until it has really been written down. */
 @Composable
@@ -195,7 +163,7 @@ private fun PhraseSetup(model: AppModel) {
     var typed by remember { mutableStateOf("") }
     if (!started) {
         Text("Your data is only on this phone. If it's lost or Keel is uninstalled, it's gone without a backup.")
-        Button({ started = true }, Modifier.fillMaxWidth()) { Text("Set up backup") }
+        KeelButton({ started = true }, Modifier.fillMaxWidth()) { Text("Set up backup") }
         return
     }
     SecureScreen()
@@ -207,7 +175,7 @@ private fun PhraseSetup(model: AppModel) {
     )
     PhraseField(typed, { typed = it }, "Type its last 5 characters")
     val matches = typed.trim().uppercase() == RecoveryPhrase.lastGroup(phrase)
-    Button(
+    KeelButton(
         { model.act { setBackupPhrase(phrase) } },
         Modifier.fillMaxWidth(),
         enabled = matches,
@@ -240,7 +208,7 @@ fun RestoreSection(model: AppModel, replacesData: Boolean) {
     }
     when (val current = stage) {
         RestoreStage.Idle -> {
-            OutlinedButton({ pick.launch(arrayOf("*/*")) }, Modifier.fillMaxWidth()) { Text("Restore from a backup") }
+            KeelSecondaryButton({ pick.launch(arrayOf("*/*")) }, Modifier.fillMaxWidth()) { Text("Restore from a backup") }
             message?.let { Muted(it) }
         }
         is RestoreStage.NeedPhrase -> Panel {
@@ -248,8 +216,8 @@ fun RestoreSection(model: AppModel, replacesData: Boolean) {
             PhraseField(typed, { typed = it }, "Recovery phrase")
             current.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton({ stage = RestoreStage.Idle }) { Text("Cancel") }
-                Button({
+                KeelTextButton({ stage = RestoreStage.Idle }) { Text("Cancel") }
+                KeelButton({
                     val key = RecoveryPhrase.normalize(typed)
                     if (key == null) {
                         stage = current.copy(error = "A recovery phrase has 25 letters and numbers. Check for a typo.")
@@ -294,8 +262,8 @@ fun RestoreSection(model: AppModel, replacesData: Boolean) {
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton({ stage = RestoreStage.Idle }) { Text("Cancel") }
-                Button({
+                KeelTextButton({ stage = RestoreStage.Idle }) { Text("Cancel") }
+                KeelButton({
                     stage = RestoreStage.Working
                     scope.launch {
                         message = withContext(Dispatchers.IO) {

@@ -11,14 +11,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +33,8 @@ import dev.keel.domain.PlanStep
 import dev.keel.domain.TimeEnvelope
 import dev.keel.domain.WeeklyCheck
 import dev.keel.domain.checkInSummary
+import dev.keel.domain.deadlineLabel
+import dev.keel.domain.upcomingDeadlines
 import dev.keel.domain.envelopeStates
 import dev.keel.domain.exchangeOwed
 import dev.keel.domain.experimentReport
@@ -52,34 +48,71 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+private const val DEADLINES_SHOWN = 5
+
+/** Dated steps from every open plan, overdue or within 30 days. Rose only ever means overdue. */
+@Composable
+fun DeadlinesSection(model: AppModel, today: LocalDate) {
+    val deadlines by loadState(model) { upcomingDeadlines(openPlanTitles(), steps(), openTaskStepIds(), today) }
+    val list = deadlines.orEmpty()
+    if (list.isEmpty()) return
+    SectionTitle("Due soon")
+    Panel {
+        list.take(DEADLINES_SHOWN).forEach { deadline ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(deadline.step.title, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        "${deadlineLabel(deadline.daysLeft)}, ${deadline.due.format(DateTimeFormatter.ofPattern("d MMM"))}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (deadline.daysLeft < 0) KeelColor.Danger else KeelColor.TextSecondary,
+                    )
+                    Text(deadline.planTitle, style = MaterialTheme.typography.bodySmall, color = KeelColor.TextSecondary)
+                }
+                KeelTextButton({
+                    model.act {
+                        addTask(deadline.step.title, today, deadline.step.id, "Step of \"${deadline.planTitle}\"", deadline.step.estimateMinutes)
+                        touchGoal(deadline.step.goalId)
+                    }
+                }) { Text("Add") }
+            }
+        }
+        val more = list.size - DEADLINES_SHOWN
+        if (more > 0) Muted("And $more more within 30 days.")
+    }
+}
+
 /** The next few steps from Active plans, one tap from today's list, and a way to browse the rest. */
 @Composable
 fun PlanPicksSection(model: AppModel, today: LocalDate) {
-    val picks by loadState(model) { nextPlanSteps(ranked(), steps(), openTaskStepIds()) }
+    val picks by loadState(model) {
+        // Anything already under "Due soon" isn't repeated here.
+        val onList = openTaskStepIds()
+        val dated = upcomingDeadlines(openPlanTitles(), steps(), onList, today).map { it.step.id }
+        nextPlanSteps(ranked(), steps(), onList + dated)
+    }
     var browsing by remember { mutableStateOf(false) }
     val list = picks ?: return
     SectionTitle("From your plans")
     if (list.isEmpty()) Muted("Nothing waiting. Switch a plan to Active under Plans and money, or browse them all.")
-    list.forEach { pick -> PickRow(model, pick, today) }
-    OutlinedButton({ browsing = true }, Modifier.fillMaxWidth()) { Text("Browse all plans") }
+    if (list.isNotEmpty()) Panel { list.forEach { pick -> PickRow(model, pick, today) } }
+    KeelSecondaryButton({ browsing = true }, Modifier.fillMaxWidth()) { Text("Browse all plans") }
     if (browsing) BrowsePlansDialog(model, today) { browsing = false }
 }
 
 @Composable
 private fun PickRow(model: AppModel, pick: PlanPick, today: LocalDate) {
-    Panel {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(pick.step.title, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                Muted(pick.planTitle)
-            }
-            TextButton({
-                model.act {
-                    addTask(pick.step.title, today, pick.step.id, "Step of \"${pick.planTitle}\"", pick.step.estimateMinutes)
-                    touchGoal(pick.step.goalId)
-                }
-            }) { Text("Add") }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(pick.step.title, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(pick.planTitle, style = MaterialTheme.typography.bodySmall, color = KeelColor.TextSecondary)
         }
+        KeelTextButton({
+            model.act {
+                addTask(pick.step.title, today, pick.step.id, "Step of \"${pick.planTitle}\"", pick.step.estimateMinutes)
+                touchGoal(pick.step.goalId)
+            }
+        }) { Text("Add") }
     }
 }
 
@@ -125,7 +158,7 @@ private fun BrowsePlansDialog(model: AppModel, today: LocalDate, onClose: () -> 
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(step.title, Modifier.weight(1f), maxLines = 4, overflow = TextOverflow.Ellipsis)
-                            TextButton({
+                            KeelTextButton({
                                 model.act {
                                     addTask(step.title, today, step.id, "Step of \"${chosen.title}\"", step.estimateMinutes)
                                     touchGoal(step.goalId)
@@ -136,14 +169,14 @@ private fun BrowsePlansDialog(model: AppModel, today: LocalDate, onClose: () -> 
                 }
             }
         },
-        confirmButton = { TextButton(onClose) { Text("Done") } },
+        confirmButton = { KeelTextButton(onClose) { Text("Done") } },
         dismissButton = {
-            if (chosen != null) TextButton({ selected = null }) { Text("All plans") }
+            if (chosen != null) KeelTextButton({ selected = null }) { Text("All plans") }
         },
     )
 }
 
-private fun Double.oneDecimal() = String.format("%.1f", this)
+private fun Double.oneDecimal() = String.format(java.util.Locale.getDefault(), "%.1f", this)
 
 /** Sleep, movement and mood, typed by hand each week. No health data is read from anywhere. */
 @Composable
@@ -160,8 +193,8 @@ fun CheckInPanel(model: AppModel, week: LocalDate) {
         ScoreRow("Sleep", sleep) { sleep = it }
         ScoreRow("Movement", exercise) { exercise = it }
         ScoreRow("Mood", mood) { mood = it }
-        OutlinedTextField(note, { note = it }, label = { Text("One thing you're stuck on (optional)") }, modifier = Modifier.fillMaxWidth())
-        Button(
+        KeelTextField(note, { note = it }, label = { Text("One thing you're stuck on (optional)") }, modifier = Modifier.fillMaxWidth())
+        KeelButton(
             {
                 val check = WeeklyCheck(week, sleep, exercise, mood, note.trim())
                 model.act { saveWeeklyCheck(check) }
@@ -179,9 +212,9 @@ fun CheckInPanel(model: AppModel, week: LocalDate) {
 @Composable
 private fun ScoreRow(label: String, value: Int, onChange: (Int) -> Unit) {
     Text(label)
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    ChipRow {
         (1..5).forEach { score ->
-            FilterChip(selected = score == value, onClick = { onChange(score) }, label = { Text("$score") })
+            KeelChip(selected = score == value, onClick = { onChange(score) }, label = { Text("$score") })
         }
     }
 }
@@ -220,6 +253,9 @@ fun TimeBudgetsSection(model: AppModel, week: LocalDate) {
         Panel {
             Column(Modifier.fillMaxWidth().clickable { deleting = envelope }) {
                 Text(envelope.name, style = MaterialTheme.typography.titleMedium)
+                state.usedMinutes?.let { used ->
+                    KeelProgress(used.toFloat() / envelope.minutesPerWeek, Modifier.padding(vertical = 8.dp), danger = state.overMinutes > 0)
+                }
                 val budget = hours(envelope.minutesPerWeek.toLong())
                 Text(
                     when (val used = state.usedMinutes) {
@@ -239,7 +275,7 @@ fun TimeBudgetsSection(model: AppModel, week: LocalDate) {
                 if (already) {
                     Muted("Added to Today.")
                 } else {
-                    OutlinedButton(
+                    KeelSecondaryButton(
                         {
                             model.act {
                                 addTask("Move ${money(owed)} to $destination", LocalDate.now(), source = "Your ${envelope.name} time rule")
@@ -256,7 +292,7 @@ fun TimeBudgetsSection(model: AppModel, week: LocalDate) {
     if (loaded.states.isNotEmpty()) {
         Muted(if (free >= 0) "${hours(free.toLong())} of a 112-hour waking week have no job yet." else "That's ${hours((-free).toLong())} more than a 112-hour waking week holds.")
     }
-    OutlinedButton({ adding = true }, Modifier.fillMaxWidth()) { Text("Add a time budget") }
+    KeelSecondaryButton({ adding = true }, Modifier.fillMaxWidth()) { Text("Add a time budget") }
     if (adding) AddEnvelopeDialog(model, context) { adding = false }
     deleting?.let { envelope ->
         AlertDialog(
@@ -264,12 +300,12 @@ fun TimeBudgetsSection(model: AppModel, week: LocalDate) {
             title = { Text("Delete \"${envelope.name}\"?") },
             text = { Text("This removes the budget and its rule. Your usage records stay.") },
             confirmButton = {
-                TextButton({
+                KeelTextButton({
                     model.act { deleteTimeEnvelope(envelope.id) }
                     deleting = null
                 }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton({ deleting = null }) { Text("Keep") } },
+            dismissButton = { KeelTextButton({ deleting = null }) { Text("Keep") } },
         )
     }
 }
@@ -289,10 +325,10 @@ private fun AddEnvelopeDialog(model: AppModel, context: android.content.Context,
         text = {
             LazyColumn(Modifier.heightIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 item {
-                    OutlinedTextField(name, { name = it }, label = { Text("Name, like Social or Study") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    KeelTextField(name, { name = it }, label = { Text("Name, like Social or Study") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
                 item {
-                    OutlinedTextField(
+                    KeelTextField(
                         hoursText,
                         { hoursText = it.filter(Char::isDigit).take(3) },
                         label = { Text("Hours a week") },
@@ -303,7 +339,7 @@ private fun AddEnvelopeDialog(model: AppModel, context: android.content.Context,
                 }
                 item { Muted("Optional: if you go over, a rule you set for yourself.") }
                 item {
-                    OutlinedTextField(
+                    KeelTextField(
                         perMinutes,
                         { perMinutes = it.filter(Char::isDigit).take(4) },
                         label = { Text("For every this many minutes over") },
@@ -313,7 +349,7 @@ private fun AddEnvelopeDialog(model: AppModel, context: android.content.Context,
                     )
                 }
                 item {
-                    OutlinedTextField(
+                    KeelTextField(
                         amount,
                         { amount = it.filter(Char::isDigit).take(9) },
                         label = { Text("I'll move this amount") },
@@ -323,7 +359,7 @@ private fun AddEnvelopeDialog(model: AppModel, context: android.content.Context,
                     )
                 }
                 item {
-                    OutlinedTextField(payTo, { payTo = it }, label = { Text("To, like savings") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    KeelTextField(payTo, { payTo = it }, label = { Text("To, like savings") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
                 item { Muted("Optional: apps to measure against this budget.") }
                 items(apps, key = { it.pkg }) { app ->
@@ -333,14 +369,14 @@ private fun AddEnvelopeDialog(model: AppModel, context: android.content.Context,
                             .clickable { picked = if (app.pkg in picked) picked - app.pkg else picked + app.pkg },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Checkbox(app.pkg in picked, null, Modifier.padding(8.dp))
+                        KeelCheck(app.pkg in picked, null)
                         Text(app.label)
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(
+            KeelTextButton(
                 enabled = name.isNotBlank() && (hoursText.toIntOrNull() ?: 0) > 0,
                 onClick = {
                     val envelopeName = name.trim()
@@ -354,7 +390,7 @@ private fun AddEnvelopeDialog(model: AppModel, context: android.content.Context,
                 },
             ) { Text("Add") }
         },
-        dismissButton = { TextButton(onClose) { Text("Cancel") } },
+        dismissButton = { KeelTextButton(onClose) { Text("Cancel") } },
     )
 }
 
@@ -376,12 +412,12 @@ fun ExperimentSection(model: AppModel) {
         val start = loaded.start
         if (start == null) {
             Muted("Run a personal test: pause rules go on one week and off the next, starting next Monday, then Keel compares your time in those apps. Task-locked, time limits and Sprints keep working.")
-            OutlinedButton({ confirming = true }, Modifier.fillMaxWidth()) { Text("Start the experiment") }
+            KeelSecondaryButton({ confirming = true }, Modifier.fillMaxWidth()) { Text("Start the experiment") }
         } else {
             when {
-                today.isBefore(start) -> Text("Starts ${start.format(DateTimeFormatter.ofPattern("EEEE d MMM"))}.")
-                experimentWeekIsOff(start, today) -> Text("This is a friction-off week: pause rules aren't pausing.", color = MaterialTheme.colorScheme.primary)
-                else -> Text("This is a friction-on week: pause rules are working as usual.", color = MaterialTheme.colorScheme.primary)
+                today.isBefore(start) -> StatusLine("Starts ${start.format(DateTimeFormatter.ofPattern("EEEE d MMM"))}", tone = Tone.Neutral)
+                experimentWeekIsOff(start, today) -> StatusLine("Friction-off week: pause rules aren't pausing", tone = Tone.Neutral)
+                else -> StatusLine("Friction-on week: pause rules are working as usual")
             }
             when (val report = loaded.report) {
                 is ExperimentReport.NotEnough -> Muted(
@@ -399,7 +435,7 @@ fun ExperimentSection(model: AppModel) {
                 }
                 null -> Unit
             }
-            TextButton({ model.act { stopExperiment() } }) { Text("Stop the experiment") }
+            KeelTextButton({ model.act { stopExperiment() } }) { Text("Stop the experiment") }
         }
     }
     if (confirming) {
@@ -409,12 +445,12 @@ fun ExperimentSection(model: AppModel) {
             title = { Text("Start the experiment?") },
             text = { Text("It starts ${startDate.format(DateTimeFormatter.ofPattern("EEEE d MMM"))} with a friction-on week. Every second week after that, pause rules won't pause. You can stop at any time, and pauses return at once.") },
             confirmButton = {
-                TextButton({
+                KeelTextButton({
                     confirming = false
                     model.act { startExperiment(weekStart(startDate)) }
                 }) { Text("Start") }
             },
-            dismissButton = { TextButton({ confirming = false }) { Text("Cancel") } },
+            dismissButton = { KeelTextButton({ confirming = false }) { Text("Cancel") } },
         )
     }
 }

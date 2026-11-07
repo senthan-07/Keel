@@ -2,6 +2,25 @@ package dev.keel.app.ui
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ripple
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -11,14 +30,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.keel.app.data.Repo
 import kotlinx.coroutines.Dispatchers
@@ -32,7 +50,13 @@ fun <T> loadState(model: AppModel, read: Repo.() -> T): State<T?> =
     }
 
 @Composable
-fun Page(title: String, subtitle: String? = null, content: @Composable ColumnScope.() -> Unit) {
+fun Page(
+    title: String,
+    subtitle: String? = null,
+    overline: String? = null,
+    onBack: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -40,35 +64,71 @@ fun Page(title: String, subtitle: String? = null, content: @Composable ColumnSco
             // Edge-to-edge windows aren't resized for the keyboard, so make room for it here.
             .imePadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(start = KeelSpace.Gutter, end = KeelSpace.Gutter, top = 20.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(KeelSpace.Item),
     ) {
-        Text(title, style = MaterialTheme.typography.headlineMedium)
-        subtitle?.let { Muted(it) }
+        Column(Modifier.padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            onBack?.let { back ->
+                KeelTextButton(back, Modifier.offset { IntOffset(-10.dp.roundToPx(), 0) }) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
+                }
+            }
+            overline?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = KeelColor.TextSecondary) }
+            Text(title, style = MaterialTheme.typography.headlineLarge)
+            subtitle?.let { Muted(it) }
+        }
         content()
     }
 }
 
 @Composable
 fun Muted(text: String) {
-    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = KeelColor.TextSecondary)
 }
 
 @Composable
 fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        color = KeelColor.TextSecondary,
+        modifier = Modifier.padding(top = 20.dp, bottom = 2.dp).semantics { heading() },
+    )
 }
 
+/** The one card. Depth comes from the step up in surface colour, so it needs no border or shadow. */
 @Composable
-fun Panel(content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ),
-    ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+fun Panel(onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val press = if (onClick != null) Modifier.pressScale(source) else Modifier
+    val tap = if (onClick != null) {
+        Modifier.clickable(interactionSource = source, indication = ripple(), onClick = onClick)
+    } else {
+        Modifier
+    }
+    Column(
+        press
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(KeelColor.Surface)
+            .then(tap)
+            .padding(KeelSpace.CardPadding),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        content = content,
+    )
+}
+
+/** A card row that leads somewhere, with a chevron saying so. */
+@Composable
+fun NavRow(title: String, detail: String? = null, onClick: () -> Unit) {
+    Panel(onClick) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                detail?.let { Muted(it) }
+            }
+            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = KeelColor.TextSecondary)
+        }
     }
 }
 
@@ -93,3 +153,23 @@ fun appLabel(context: Context, pkg: String): String = runCatching {
 fun homePackage(context: Context): String? = context.packageManager
     .resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
     ?.activityInfo?.packageName
+
+/** A quiet action in a list, for pages with several things you could do. */
+@Composable
+fun ActionRow(icon: ImageVector, label: String, danger: Boolean = false, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val tint = if (danger) KeelColor.Danger else KeelColor.Text
+    Row(
+        Modifier
+            .pressScale(source)
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(MaterialTheme.shapes.small)
+            .clickable(interactionSource = source, indication = ripple(), role = Role.Button, onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = if (danger) KeelColor.Danger else KeelColor.TextSecondary, modifier = Modifier.size(22.dp))
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = tint)
+    }
+}

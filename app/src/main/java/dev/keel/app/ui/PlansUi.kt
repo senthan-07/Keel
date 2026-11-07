@@ -10,18 +10,20 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,7 +66,14 @@ private fun fileName(context: Context, uri: Uri): String =
 /** Reads a plan file as text, refusing anything too large or that isn't text. */
 private fun readPlanText(context: Context, uri: Uri): String {
     val bytes = requireNotNull(context.contentResolver.openInputStream(uri)) { "couldn't open it" }.use { input ->
-        input.readNBytes(MAX_PLAN_BYTES + 1)
+        val buffer = ByteArray(MAX_PLAN_BYTES + 1)
+        var total = 0
+        while (total < buffer.size) {
+            val read = input.read(buffer, total, buffer.size - total)
+            if (read < 0) break
+            total += read
+        }
+        buffer.copyOf(total)
     }
     require(bytes.size <= MAX_PLAN_BYTES) { "it's larger than 2 MB" }
     require(bytes.none { it == 0.toByte() }) { "it isn't a text file" }
@@ -126,17 +135,16 @@ fun PlansScreen(model: AppModel, onBack: () -> Unit, onOpenGoal: (Long) -> Unit)
             }
         }
     }
-    Page("Plans and money", "Optional. Keel never asks for bank data, and all of this stays on your phone.") {
-        TextButton(onBack) { Text("Back to Horizons") }
+    Page("Plans and money", "Optional. Keel never asks for bank data, and all of this stays on your phone.", onBack = onBack) {
         val loaded = data ?: return@Page
         MoneySection(model, loaded.money)
         SectionTitle("Your plans")
         Muted("Import Markdown files or paste text. Every [ ] line becomes a step you can tick. Import a changed file again and your ticks carry over.")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            Button({ import.launch(arrayOf("text/*", "application/octet-stream")) }, Modifier.weight(1f)) { Text("Import files") }
-            OutlinedButton({ pasting = true }, Modifier.weight(1f)) { Text("Paste text") }
+            KeelButton({ import.launch(arrayOf("text/*", "application/octet-stream")) }, Modifier.weight(1f)) { Text("Import files") }
+            KeelSecondaryButton({ pasting = true }, Modifier.weight(1f)) { Text("Paste text") }
         }
-        message?.let { Panel { Muted(it) } }
+        message?.let { Panel { Text(it, style = MaterialTheme.typography.bodyMedium) } }
         if (loaded.docs.isEmpty()) Muted("No plans yet.")
         PlanCategory.entries.forEach { category ->
             val inCategory = loaded.docs.filter { it.category == category }
@@ -150,6 +158,11 @@ fun PlansScreen(model: AppModel, onBack: () -> Unit, onOpenGoal: (Long) -> Unit)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f).clickable { onOpenGoal(doc.goalId) }) {
                                 Text(goal.title, style = MaterialTheme.typography.titleMedium)
+                                if (steps.isNotEmpty()) {
+                                    Spacer(Modifier.height(8.dp))
+                                    KeelProgress(steps.count { it.doneAt != null }.toFloat() / steps.size)
+                                    Spacer(Modifier.height(8.dp))
+                                }
                                 Muted(
                                     if (steps.isEmpty()) {
                                         "For reading"
@@ -160,7 +173,7 @@ fun PlansScreen(model: AppModel, onBack: () -> Unit, onOpenGoal: (Long) -> Unit)
                             }
                             if (steps.isNotEmpty()) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Switch(goal.status == GoalStatus.ACTIVE, { on -> model.act { setPlanActive(doc.goalId, on) } })
+                                    KeelSwitch(goal.status == GoalStatus.ACTIVE, { on -> model.act { setPlanActive(doc.goalId, on) } })
                                     Muted("Active")
                                 }
                             }
@@ -171,7 +184,7 @@ fun PlansScreen(model: AppModel, onBack: () -> Unit, onOpenGoal: (Long) -> Unit)
         }
         if (loaded.docs.isNotEmpty()) {
             Muted("Active plans feed Horizons and the pause screen's next step. The rest stay here until you need them.")
-            OutlinedButton({ confirmExportAll = true }, Modifier.fillMaxWidth()) { Text("Export all to a folder") }
+            KeelSecondaryButton({ confirmExportAll = true }, Modifier.fillMaxWidth()) { Text("Export all to a folder") }
         }
     }
     if (pasting) PastePlanDialog(model, { message = it }) { pasting = false }
@@ -216,8 +229,8 @@ private fun ShareWarning(onCancel: () -> Unit, onContinue: () -> Unit) {
                     "Check it for personal details, like names, pay and family, before sharing it.",
             )
         },
-        confirmButton = { TextButton(onContinue) { Text("Continue") } },
-        dismissButton = { TextButton(onCancel) { Text("Cancel") } },
+        confirmButton = { KeelTextButton(onContinue) { Text("Continue") } },
+        dismissButton = { KeelTextButton(onCancel) { Text("Cancel") } },
     )
 }
 
@@ -231,13 +244,13 @@ private fun PastePlanDialog(model: AppModel, onResult: (String) -> Unit, onClose
         title = { Text("Paste a plan") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(title, { title = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(body, { body = it }, label = { Text("Your plan") }, minLines = 5, maxLines = 10, modifier = Modifier.fillMaxWidth())
+                KeelTextField(title, { title = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                KeelTextField(body, { body = it }, label = { Text("Your plan") }, minLines = 5, maxLines = 10, modifier = Modifier.fillMaxWidth())
                 Muted("Start a line with - [ ] to make it a step.")
             }
         },
         confirmButton = {
-            TextButton(
+            KeelTextButton(
                 enabled = title.isNotBlank() && body.isNotBlank(),
                 onClick = {
                     val name = title.trim()
@@ -258,7 +271,7 @@ private fun PastePlanDialog(model: AppModel, onResult: (String) -> Unit, onClose
                 },
             ) { Text("Save") }
         },
-        dismissButton = { TextButton(onClose) { Text("Cancel") } },
+        dismissButton = { KeelTextButton(onClose) { Text("Cancel") } },
     )
 }
 
@@ -305,24 +318,20 @@ fun PlanPanel(model: AppModel, doc: PlanDoc, goal: Goal, onDeleted: () -> Unit) 
         }
     }
     Panel {
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        ChipRow {
             PlanCategory.entries.forEach { category ->
-                FilterChip(
+                KeelChip(
                     selected = category == doc.category,
                     onClick = { model.act { setPlanCategory(doc.goalId, category) } },
                     label = { Text(category.label, maxLines = 1) },
                 )
             }
         }
-        OutlinedButton({ reading = !reading }, Modifier.fillMaxWidth()) {
-            Text(if (reading) "Hide the full plan" else "Read the full plan")
-        }
-        OutlinedButton({ update.launch(arrayOf("text/*", "application/octet-stream")) }, Modifier.fillMaxWidth()) {
-            Text("Update from a changed file")
-        }
-        OutlinedButton({ pendingClean = false }, Modifier.fillMaxWidth()) { Text("Export with my ticks") }
-        OutlinedButton({ pendingClean = true }, Modifier.fillMaxWidth()) { Text("Export a clean copy to share") }
-        TextButton({ deleting = true }) { Text("Delete this plan", color = MaterialTheme.colorScheme.error) }
+        ActionRow(Icons.Outlined.Description, if (reading) "Hide the full plan" else "Read the full plan") { reading = !reading }
+        ActionRow(Icons.Outlined.Upload, "Update from a changed file") { update.launch(arrayOf("text/*", "application/octet-stream")) }
+        ActionRow(Icons.Outlined.Download, "Export with my ticks") { pendingClean = false }
+        ActionRow(Icons.Outlined.Share, "Export a clean copy to share") { pendingClean = true }
+        ActionRow(Icons.Outlined.DeleteOutline, "Delete this plan", danger = true) { deleting = true }
         message?.let { Muted(it) }
     }
     if (reading) {
@@ -356,13 +365,13 @@ fun PlanPanel(model: AppModel, doc: PlanDoc, goal: Goal, onDeleted: () -> Unit) 
             title = { Text("Delete \"${goal.title}\"?") },
             text = { Text("This removes the plan and its ticks from Keel, and can't be undone. Tasks already on Today stay. Your original file isn't touched.") },
             confirmButton = {
-                TextButton({
+                KeelTextButton({
                     deleting = false
                     model.act { deletePlan(doc.goalId) }
                     onDeleted()
                 }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton({ deleting = false }) { Text("Keep") } },
+            dismissButton = { KeelTextButton({ deleting = false }) { Text("Keep") } },
         )
     }
 }
@@ -379,7 +388,10 @@ private fun MoneySection(model: AppModel, goals: List<MoneyGoal>) {
         Panel {
             Column(Modifier.fillMaxWidth().clickable { updating = goal }) {
                 Text(goal.title, style = MaterialTheme.typography.titleMedium)
-                Text("${money(state.saved)} of ${money(goal.target)} (${state.percent}%)")
+                Spacer(Modifier.height(8.dp))
+                KeelProgress(state.percent / 100f)
+                Spacer(Modifier.height(8.dp))
+                Text("${money(state.saved)} of ${money(goal.target)} (${state.percent}%)", style = MaterialTheme.typography.bodyLarge.tabular)
                 Muted(
                     when (val idle = state.idleDays) {
                         null -> "Nothing recorded yet. Tap to update."
@@ -390,7 +402,7 @@ private fun MoneySection(model: AppModel, goals: List<MoneyGoal>) {
             }
         }
     }
-    OutlinedButton({ adding = true }, Modifier.fillMaxWidth()) { Text("Add a money goal") }
+    KeelSecondaryButton({ adding = true }, Modifier.fillMaxWidth()) { Text("Add a money goal") }
     if (adding) AddMoneyGoalDialog(model) { adding = false }
     updating?.let { goal -> UpdateMoneyDialog(model, goal) { updating = null } }
 }
@@ -406,8 +418,8 @@ private fun AddMoneyGoalDialog(model: AppModel, onClose: () -> Unit) {
         title = { Text("Add a money goal") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(title, { title = it }, label = { Text("Name, like Emergency fund") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(
+                KeelTextField(title, { title = it }, label = { Text("Name, like Emergency fund") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                KeelTextField(
                     target,
                     { target = digits(it) },
                     label = { Text("Target amount") },
@@ -418,7 +430,7 @@ private fun AddMoneyGoalDialog(model: AppModel, onClose: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(
+            KeelTextButton(
                 enabled = title.isNotBlank() && (target.toLongOrNull() ?: 0) > 0,
                 onClick = {
                     val name = title.trim()
@@ -428,7 +440,7 @@ private fun AddMoneyGoalDialog(model: AppModel, onClose: () -> Unit) {
                 },
             ) { Text("Add") }
         },
-        dismissButton = { TextButton(onClose) { Text("Cancel") } },
+        dismissButton = { KeelTextButton(onClose) { Text("Cancel") } },
     )
 }
 
@@ -442,12 +454,12 @@ private fun UpdateMoneyDialog(model: AppModel, goal: MoneyGoal, onClose: () -> U
             title = { Text("Delete \"${goal.title}\"?") },
             text = { Text("This removes the goal and its history, and can't be undone.") },
             confirmButton = {
-                TextButton({
+                KeelTextButton({
                     model.act { deleteMoneyGoal(goal.id) }
                     onClose()
                 }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClose) { Text("Keep") } },
+            dismissButton = { KeelTextButton(onClose) { Text("Keep") } },
         )
         return
     }
@@ -456,7 +468,7 @@ private fun UpdateMoneyDialog(model: AppModel, goal: MoneyGoal, onClose: () -> U
         title = { Text(goal.title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
+                KeelTextField(
                     amount,
                     { amount = digits(it) },
                     label = { Text("Saved so far") },
@@ -464,11 +476,11 @@ private fun UpdateMoneyDialog(model: AppModel, goal: MoneyGoal, onClose: () -> U
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                TextButton({ deleting = true }) { Text("Delete this goal", color = MaterialTheme.colorScheme.error) }
+                KeelTextButton({ deleting = true }) { Text("Delete this goal", color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
-            TextButton(
+            KeelTextButton(
                 enabled = amount.isNotEmpty(),
                 onClick = {
                     val saved = amount.toLong()
@@ -477,6 +489,6 @@ private fun UpdateMoneyDialog(model: AppModel, goal: MoneyGoal, onClose: () -> U
                 },
             ) { Text("Save") }
         },
-        dismissButton = { TextButton(onClose) { Text("Cancel") } },
+        dismissButton = { KeelTextButton(onClose) { Text("Cancel") } },
     )
 }
