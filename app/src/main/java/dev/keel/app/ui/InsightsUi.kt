@@ -4,6 +4,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -370,6 +373,8 @@ private fun AddEnvelopeDialog(model: AppModel, context: android.content.Context,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         KeelCheck(app.pkg in picked, null)
+                        AppIcon(app.pkg, Modifier.size(32.dp))
+                        Spacer(Modifier.width(12.dp))
                         Text(app.label)
                     }
                 }

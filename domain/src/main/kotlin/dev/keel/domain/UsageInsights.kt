@@ -103,6 +103,32 @@ fun usageReport(
     )
 }
 
+/**
+ * Each time an app was used inside the window, oldest first and cut to the window. Going back to the same
+ * app within [joinGapMillis], like after a notification, counts as one visit, because that's how it feels.
+ */
+fun visits(
+    sessions: List<UsageSession>,
+    from: Long,
+    to: Long,
+    joinGapMillis: Long = 60_000,
+): List<UsageSession> {
+    val clipped = sessions
+        .map { UsageSession(it.pkg, maxOf(it.start, from), minOf(it.end, to)) }
+        .filter { it.end > it.start }
+        .sortedBy { it.start }
+    val joined = mutableListOf<UsageSession>()
+    for (session in clipped) {
+        val last = joined.lastOrNull()
+        if (last != null && last.pkg == session.pkg && session.start - last.end <= joinGapMillis) {
+            joined[joined.lastIndex] = last.copy(end = maxOf(last.end, session.end))
+        } else {
+            joined += session
+        }
+    }
+    return joined
+}
+
 /** "2 h 5 min", "45 min", "Under 1 min" or "0 min". */
 fun durationLabel(millis: Long): String {
     if (millis <= 0) return "0 min"

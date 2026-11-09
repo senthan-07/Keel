@@ -101,7 +101,10 @@ fun SectionTitle(text: String) {
     )
 }
 
-/** The one card, in frosted glass over the backdrop's glow. */
+/**
+ * The one card: see-through glass over the backdrop's orbs, with a sheen and a light-catching edge. Real blur
+ * per card was tried and dropped: it turned the colours to flat grey and slowed scrolling.
+ */
 @Composable
 fun Panel(onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     val source = remember { MutableInteractionSource() }

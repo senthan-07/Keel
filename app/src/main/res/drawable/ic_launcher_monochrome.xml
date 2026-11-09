@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The same boat in one colour, for themed icons. The system tints it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="1.18" android:scaleY="1.18">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M53,23 C63,33 71,45 75,59 L53,59 Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M49,29 L49,59 L34,59 C38,49 43,39 49,29 Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M30,63 L78,63 C75,70 68,73 54,73 C40,73 33,70 30,63 Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M51,73 L57,73 L56,82 C55,85 53,85 52,82 Z" />
+    </group>
+</vector>

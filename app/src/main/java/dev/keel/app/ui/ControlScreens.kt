@@ -19,6 +19,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -317,13 +320,13 @@ private fun AppPicker(
     androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth()) {
         items(surfaces.size) { i ->
             val surface = surfaces[i]
-            PickRow("${surface.label} only", surface.id in pickedSurfaces) { on ->
+            PickRow("${surface.label} only", surface.id in pickedSurfaces, surface.pkg) { on ->
                 onSurfaces(if (on) pickedSurfaces + surface.id else pickedSurfaces - surface.id)
             }
         }
         items(apps.size) { i ->
             val app = apps[i]
-            PickRow(app.label, app.pkg in pickedApps) { on ->
+            PickRow(app.label, app.pkg in pickedApps, app.pkg) { on ->
                 onApps(if (on) pickedApps + app.pkg else pickedApps - app.pkg)
             }
         }
@@ -331,7 +334,7 @@ private fun AppPicker(
 }
 
 @Composable
-private fun PickRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun PickRow(label: String, checked: Boolean, pkg: String?, onChange: (Boolean) -> Unit) {
     // The whole row responds, not just the small checkbox.
     Row(
         Modifier
@@ -340,6 +343,10 @@ private fun PickRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit
         verticalAlignment = Alignment.CenterVertically,
     ) {
         KeelCheck(checked, null)
+        pkg?.let {
+            AppIcon(it, Modifier.size(32.dp))
+            Spacer(Modifier.width(12.dp))
+        }
         Text(label)
     }
 }
@@ -389,15 +396,15 @@ fun ReviewScreen(model: AppModel) {
     val data by loadState(model) { loadReview() }
     var ruleChange by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
-    var openApp by remember { mutableStateOf<String?>(null) }
-    openApp?.let { pkg ->
+    var openApp by remember { mutableStateOf<Triple<String, dev.keel.domain.UsageRange, Int>?>(null) }
+    openApp?.let { (pkg, range, offset) ->
         BackHandler { openApp = null }
-        AppUsagePage(model, pkg) { openApp = null }
+        AppUsagePage(model, pkg, range, offset) { openApp = null }
         return
     }
     Page("Review") {
         SectionTitle("Screen time")
-        ScreenTimeSection(model) { openApp = it }
+        ScreenTimeSection(model) { pkg, range, offset -> openApp = Triple(pkg, range, offset) }
         val loaded = data ?: return@Page
         val first = loaded.week.format(DateTimeFormatter.ofPattern("d MMM"))
         val last = loaded.week.plusDays(6).format(DateTimeFormatter.ofPattern("d MMM"))
@@ -655,12 +662,12 @@ fun OnboardingScreen(model: AppModel) {
             Panel {
                 Column(Modifier.fillMaxWidth()) {
                     surfaces.forEach { surface ->
-                        PickRow("${surface.label} only", surface.id in pickedSurfaces) { on ->
+                        PickRow("${surface.label} only", surface.id in pickedSurfaces, surface.pkg) { on ->
                             pickedSurfaces = if (on) pickedSurfaces + surface.id else pickedSurfaces - surface.id
                         }
                     }
                     apps.forEach { app ->
-                        PickRow(app.label, app.pkg in pickedApps) { on ->
+                        PickRow(app.label, app.pkg in pickedApps, app.pkg) { on ->
                             pickedApps = if (on) pickedApps + app.pkg else pickedApps - app.pkg
                         }
                     }

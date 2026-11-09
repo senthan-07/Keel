@@ -190,7 +190,8 @@ private fun Root(model: AppModel, screen: Screen, onScreen: (Screen) -> Unit) {
             var barHeight by remember { mutableStateOf(0.dp) }
             Box(Modifier.fillMaxSize()) {
                 // The pages and their backdrop are what the tab bar blurs as they scroll under it.
-                Box(Modifier.fillMaxSize().keelBackdrop(KeelColor.palette).hazeSource(haze)) {
+                Box(Modifier.fillMaxSize().hazeSource(haze)) {
+                    Box(Modifier.fillMaxSize().keelBackdrop(KeelColor.palette))
                     CompositionLocalProvider(LocalBottomBar provides barHeight) {
                         // Tabs are switched many times a day, so they get a short fade and no movement.
                         Crossfade(

@@ -235,3 +235,21 @@ Run on the optimised release build under the separate "Keel check" identity, on 
 **Found and fixed during the check:** titles turned black in dark mode once the backdrop became see-through, and unselected chip outlines vanished on glass.
 
 **Not checked:** Android 10 and 11, where the bar falls back to a plain tint instead of a blur, and how the charts look after several weeks of data.
+
+## New icon, calmer light palette, glass and daily timings (2026-11-09)
+
+Run on the optimised release build under the separate "Keel check" identity, on Samsung.
+
+| Check | Result |
+|---|---|
+| Unit tests | 117 of 117 pass, including one for joining an app's quick returns into one visit |
+| Lint, no-internet check | No errors; no network permission |
+| Light palette | Marigold removed: aubergine actions with Ice Silver text, over lilac, sky and blush |
+| Glass | Cards are see-through over three soft orbs; only the tab bar uses real blur |
+| Real blur on every card | Tried and dropped: it made cards flat grey, and half the frames took 25 ms or more |
+| Scrolling Review with plain glass | 506 frames, 1 janky (0.2%) |
+| Week chart | Tapping a day offers "See this day hour by hour", which opens that day |
+| Day chart | Tapping an hour lists the apps that filled it |
+| Timeline | Matches the phone's own usage records to the second, for example LinkedIn 8:44:33 to 8:46:16 |
+| App pickers | Icons in setup, Add apps and time budgets |
+| Launcher icon | A sailboat with a neon rose keel, plus a one-colour version for themed icons |

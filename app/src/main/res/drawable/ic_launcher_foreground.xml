@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A hull seen from the side with its keel below, the part that keeps a boat steady. -->
+<!-- A sailboat holding its course: two sails, the hull, and the keel below in neon rose, the part that keeps a boat steady. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path android:fillColor="#007BA7" android:pathData="M30,44 L78,44 L70,60 L38,60 Z" />
-    <path android:fillColor="#007BA7" android:pathData="M50,60 L58,60 L58,76 L50,76 Z" />
-    <path android:fillColor="#007BA7" android:pathData="M52,28 L56,28 L56,44 L52,44 Z" />
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="1.18" android:scaleY="1.18">
+        <path android:fillColor="#FFF5F5F5" android:pathData="M53,23 C63,33 71,45 75,59 L53,59 Z" />
+        <path android:fillColor="#FF5FC3E4" android:pathData="M49,29 L49,59 L34,59 C38,49 43,39 49,29 Z" />
+        <path android:fillColor="#FF2BA8D8" android:pathData="M30,63 L78,63 C75,70 68,73 54,73 C40,73 33,70 30,63 Z" />
+        <path android:fillColor="#FFFF2950" android:pathData="M51,73 L57,73 L56,82 C55,85 53,85 52,82 Z" />
+    </group>
 </vector>

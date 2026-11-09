@@ -89,6 +89,20 @@ class UsageInsightsTest {
         assertArrayEquals(expected, hourOfDayTotals(sessions, at(monday, 0), at(monday.plusDays(7), 0), zone))
     }
 
+    @Test fun `visits are cut to the day, in order, with quick returns joined`() {
+        val sessions = listOf(
+            session("yt", monday, 9, 5, 9, 10),
+            session("yt", monday, 9, 10, 9, 12),
+            session("wa", monday, 8, 0, 8, 3),
+            session("yt", monday, 11, 0, 11, 5),
+            UsageSession("late", at(monday, 23, 50), at(monday.plusDays(1), 0, 20)),
+        )
+        val day = visits(sessions, at(monday, 0), at(monday.plusDays(1), 0))
+        assertEquals(listOf("wa", "yt", "yt", "late"), day.map { it.pkg })
+        assertEquals(at(monday, 9, 5) to at(monday, 9, 12), day[1].start to day[1].end)
+        assertEquals(at(monday.plusDays(1), 0), day[3].end)
+    }
+
     @Test fun `labels read naturally`() {
         assertEquals("0 min", durationLabel(0))
         assertEquals("Under 1 min", durationLabel(30_000))

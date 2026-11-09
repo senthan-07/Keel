@@ -77,7 +77,7 @@ import dev.keel.app.R
 
 /**
  * One theme's colours, by role. Measured contrast decided the rules, so keep to them:
- * - [accentFill] with [onAccent] is the primary action. Marigold is too pale to use alone on Ice Silver.
+ * - [accentFill] with [onAccent] is the primary action.
  * - [accent] is for outlines, icons and progress. Cerulean is never small text (3.3-4.1:1).
  * - [danger] only means danger, overdue or over budget.
  * - Reading text only uses [text] and [textSecondary].
@@ -97,9 +97,10 @@ data class KeelPalette(
     /** Frosted glass: a see-through card fill, and the light catching its top edge. */
     val glass: Color,
     val glassEdge: Color,
-    /** Two soft glows behind every screen, so the glass has something to show through it. */
+    /** Three soft orbs behind every screen, so the glass has colour and shape to blur. */
     val glowA: Color,
     val glowB: Color,
+    val glowC: Color,
 )
 
 /** Jet Black, Cerulean and Neon Rose. */
@@ -115,13 +116,17 @@ val DarkPalette = KeelPalette(
     danger = Color(0xFFFF2950),
     onDanger = Color(0xFF0A0A0A),
     isDark = true,
-    glass = Color.White.copy(alpha = 0.055f),
-    glassEdge = Color.White.copy(alpha = 0.14f),
-    glowA = Color(0xFF007BA7).copy(alpha = 0.30f),
-    glowB = Color(0xFFFF2950).copy(alpha = 0.10f),
+    glass = Color.White.copy(alpha = 0.06f),
+    glassEdge = Color.White.copy(alpha = 0.24f),
+    glowA = Color(0xFF007BA7).copy(alpha = 0.62f),
+    glowB = Color(0xFFFF2950).copy(alpha = 0.30f),
+    glowC = Color(0xFF6C4BD8).copy(alpha = 0.36f),
 )
 
-/** Ice Silver, Deep Aubergine and Marigold. A muted mulberry marks warnings without shouting. */
+/**
+ * Ice Silver and Deep Aubergine, lit by soft lilac, sky and blush. Aubergine carries every action, with
+ * Ice Silver text on it. A muted mulberry marks warnings without shouting.
+ */
 val LightPalette = KeelPalette(
     page = Color(0xFFE4E9ED),
     surface = Color(0xFFF4F6F8),
@@ -129,15 +134,16 @@ val LightPalette = KeelPalette(
     text = Color(0xFF3B0F40),
     textSecondary = Color(0xFF5D4763),
     accent = Color(0xFF3B0F40),
-    accentFill = Color(0xFFEAA221),
-    onAccent = Color(0xFF3B0F40),
+    accentFill = Color(0xFF3B0F40),
+    onAccent = Color(0xFFF4F6F8),
     danger = Color(0xFF8A3A63),
     onDanger = Color(0xFFF4F6F8),
     isDark = false,
-    glass = Color.White.copy(alpha = 0.58f),
+    glass = Color.White.copy(alpha = 0.5f),
     glassEdge = Color.White.copy(alpha = 0.95f),
-    glowA = Color(0xFFEAA221).copy(alpha = 0.26f),
-    glowB = Color(0xFF3B0F40).copy(alpha = 0.10f),
+    glowA = Color(0xFFB9A2E8).copy(alpha = 0.62f),
+    glowB = Color(0xFF8EC8EE).copy(alpha = 0.58f),
+    glowC = Color(0xFFF2B8CF).copy(alpha = 0.45f),
 )
 
 enum class ThemeMode(val label: String) { SYSTEM("System"), LIGHT("Light"), DARK("Dark") }
@@ -302,22 +308,30 @@ fun KeelTheme(mode: ThemeMode, content: @Composable () -> Unit) {
 }
 
 /**
- * The backdrop behind every screen: the page colour with two wide, soft glows in the theme's accents.
- * It's drawn once and doesn't move, so it costs nothing while scrolling.
+ * The backdrop behind every screen: the page colour with three soft orbs in the theme's colours. Glass
+ * cards blur them as they scroll past, which is what makes the glass read as glass. The orbs never
+ * move, so they cost nothing while scrolling.
  */
 fun Modifier.keelBackdrop(palette: KeelPalette): Modifier = drawBehind {
     drawRect(palette.page)
-    val reach = maxOf(size.width, size.height)
-    drawCircle(
-        Brush.radialGradient(listOf(palette.glowA, Color.Transparent), Offset(size.width * 0.1f, size.height * 0.02f), reach * 0.75f),
-        radius = reach * 0.75f,
-        center = Offset(size.width * 0.1f, size.height * 0.02f),
-    )
-    drawCircle(
-        Brush.radialGradient(listOf(palette.glowB, Color.Transparent), Offset(size.width * 0.95f, size.height * 0.85f), reach * 0.7f),
-        radius = reach * 0.7f,
-        center = Offset(size.width * 0.95f, size.height * 0.85f),
-    )
+    fun orb(color: Color, x: Float, y: Float, radius: Float) {
+        val center = Offset(size.width * x, size.height * y)
+        val r = size.width * radius
+        drawCircle(
+            Brush.radialGradient(
+                0f to color,
+                0.55f to color.copy(alpha = color.alpha * 0.75f),
+                1f to Color.Transparent,
+                center = center,
+                radius = r,
+            ),
+            radius = r,
+            center = center,
+        )
+    }
+    orb(palette.glowA, 0.12f, 0.13f, 0.62f)
+    orb(palette.glowB, 0.98f, 0.47f, 0.55f)
+    orb(palette.glowC, 0.18f, 0.86f, 0.58f)
 }
 
 /** A frosted-glass surface: see-through fill, a faint sheen at the top, and an edge that catches light. */
@@ -439,7 +453,7 @@ fun KeelChip(selected: Boolean, onClick: () -> Unit, pending: Boolean = false, l
             .pressScale(source)
             .heightIn(min = 44.dp)
             .clip(MaterialTheme.shapes.small)
-            .background(KeelColor.Elevated.copy(alpha = chosen))
+            .background(KeelColor.Elevated.copy(alpha = 0.8f * chosen))
             .border(BorderStroke(1.dp + 0.5.dp * maxOf(chosen, later), edge), MaterialTheme.shapes.small)
             .clickable(interactionSource = source, indication = null, role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
