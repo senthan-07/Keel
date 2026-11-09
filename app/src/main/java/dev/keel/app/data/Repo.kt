@@ -671,6 +671,13 @@ class Repo private constructor(private val db: SQLiteDatabase) {
         }
     }
 
+    /** Every session that overlaps the window, for splitting into hours and days. */
+    fun sessions(from: Long, to: Long): List<UsageSession> = list(
+        "SELECT pkg, start_at, end_at FROM usage_session WHERE end_at > ? AND start_at < ?",
+        from.toString(),
+        to.toString(),
+    ) { UsageSession(it.getString(0), it.getLong(1), it.getLong(2)) }
+
     fun usage(from: Long, to: Long): List<WeekUsage> = list(
         "SELECT pkg, SUM(end_at - start_at) / 60000 AS minutes FROM usage_session " +
             "WHERE start_at>=? AND start_at<? GROUP BY pkg ORDER BY minutes DESC",

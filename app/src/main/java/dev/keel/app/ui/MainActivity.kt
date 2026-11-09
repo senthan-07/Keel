@@ -8,6 +8,18 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -120,7 +132,8 @@ class MainActivity : ComponentActivity() {
                 applySystemBars(ThemePrefs.palette(this@MainActivity, model.theme))
             }
             KeelTheme(model.theme) {
-                Surface(Modifier.fillMaxSize(), color = KeelColor.Page) {
+                // See-through, so the backdrop shows, but text still takes the theme colour.
+                Surface(Modifier.fillMaxSize().keelBackdrop(KeelColor.palette), color = Color.Transparent, contentColor = KeelColor.Text) {
                     Root(model, screen) { screen = it }
                 }
             }
@@ -171,32 +184,57 @@ private fun Root(model: AppModel, screen: Screen, onScreen: (Screen) -> Unit) {
     val onboarded by loadState(model) { setting("onboarded") ?: "false" }
     when (onboarded) {
         null -> Box(Modifier.fillMaxSize())
-        "true" -> Column(Modifier.fillMaxSize()) {
-            // Tabs are switched many times a day, so they get a short fade and no movement.
-            Crossfade(
-                screen,
-                Modifier.weight(1f),
-                tween(KeelMotion.STATE_MS, easing = KeelMotion.EaseOut),
-                label = "tabs",
-            ) { current ->
-                when (current) {
-                    Screen.HORIZONS -> HorizonsScreen(model)
-                    Screen.TODAY -> TodayScreen(model)
-                    Screen.RULES -> RulesScreen(model)
-                    Screen.REVIEW -> ReviewScreen(model)
-                    Screen.DATA -> DataScreen(model)
+        "true" -> {
+            val haze = rememberHazeState()
+            val density = LocalDensity.current
+            var barHeight by remember { mutableStateOf(0.dp) }
+            Box(Modifier.fillMaxSize()) {
+                // The pages and their backdrop are what the tab bar blurs as they scroll under it.
+                Box(Modifier.fillMaxSize().keelBackdrop(KeelColor.palette).hazeSource(haze)) {
+                    CompositionLocalProvider(LocalBottomBar provides barHeight) {
+                        // Tabs are switched many times a day, so they get a short fade and no movement.
+                        Crossfade(
+                            screen,
+                            Modifier.fillMaxSize(),
+                            tween(KeelMotion.STATE_MS, easing = KeelMotion.EaseOut),
+                            label = "tabs",
+                        ) { current ->
+                            when (current) {
+                                Screen.HORIZONS -> HorizonsScreen(model)
+                                Screen.TODAY -> TodayScreen(model)
+                                Screen.RULES -> RulesScreen(model)
+                                Screen.REVIEW -> ReviewScreen(model)
+                                Screen.DATA -> DataScreen(model)
+                            }
+                        }
+                    }
                 }
+                KeelNavBar(
+                    screen,
+                    onScreen,
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .onSizeChanged { barHeight = with(density) { it.height.toDp() } }
+                        .hazeEffect(
+                            haze,
+                            HazeStyle(
+                                backgroundColor = KeelColor.Page,
+                                tint = HazeTint(KeelColor.Page.copy(alpha = if (KeelColor.palette.isDark) 0.7f else 0.66f)),
+                                blurRadius = 24.dp,
+                                noiseFactor = 0.03f,
+                            ),
+                        ),
+                )
             }
-            KeelNavBar(screen, onScreen)
         }
         else -> OnboardingScreen(model)
     }
 }
 
 @Composable
-private fun KeelNavBar(selected: Screen, onSelect: (Screen) -> Unit) {
-    Column(Modifier.background(KeelColor.Page)) {
-        HorizontalDivider(color = KeelColor.Elevated, thickness = 1.dp)
+private fun KeelNavBar(selected: Screen, onSelect: (Screen) -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        HorizontalDivider(color = KeelColor.GlassEdge.copy(alpha = KeelColor.GlassEdge.alpha * 0.6f), thickness = 1.dp)
         Row(Modifier.fillMaxWidth().navigationBarsPadding().selectableGroup()) {
             Screen.entries.forEach { screen ->
                 val isSelected = screen == selected
@@ -216,12 +254,26 @@ private fun KeelNavBar(selected: Screen, onSelect: (Screen) -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Icon(
-                        if (isSelected) screen.selectedIcon else screen.icon,
-                        contentDescription = null,
-                        tint = if (isSelected) KeelColor.Accent else KeelColor.TextSecondary,
-                        modifier = Modifier.size(24.dp),
+                    // The chosen tab sits in a soft pill, faded in on the same timing as the page.
+                    val pill by animateFloatAsState(
+                        if (isSelected) 1f else 0f,
+                        tween(KeelMotion.STATE_MS, easing = KeelMotion.EaseOut),
+                        label = "tabPill",
                     )
+                    Box(
+                        Modifier
+                            .size(width = 56.dp, height = 30.dp)
+                            .clip(CircleShape)
+                            .background(KeelColor.Accent.copy(alpha = 0.16f * pill)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            if (isSelected) screen.selectedIcon else screen.icon,
+                            contentDescription = null,
+                            tint = if (isSelected) KeelColor.Accent else KeelColor.TextSecondary,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                     Text(
                         screen.label,
                         style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.sp),

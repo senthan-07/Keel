@@ -57,6 +57,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -91,6 +94,12 @@ data class KeelPalette(
     val danger: Color,
     val onDanger: Color,
     val isDark: Boolean,
+    /** Frosted glass: a see-through card fill, and the light catching its top edge. */
+    val glass: Color,
+    val glassEdge: Color,
+    /** Two soft glows behind every screen, so the glass has something to show through it. */
+    val glowA: Color,
+    val glowB: Color,
 )
 
 /** Jet Black, Cerulean and Neon Rose. */
@@ -106,6 +115,10 @@ val DarkPalette = KeelPalette(
     danger = Color(0xFFFF2950),
     onDanger = Color(0xFF0A0A0A),
     isDark = true,
+    glass = Color.White.copy(alpha = 0.055f),
+    glassEdge = Color.White.copy(alpha = 0.14f),
+    glowA = Color(0xFF007BA7).copy(alpha = 0.30f),
+    glowB = Color(0xFFFF2950).copy(alpha = 0.10f),
 )
 
 /** Ice Silver, Deep Aubergine and Marigold. A muted mulberry marks warnings without shouting. */
@@ -121,6 +134,10 @@ val LightPalette = KeelPalette(
     danger = Color(0xFF8A3A63),
     onDanger = Color(0xFFF4F6F8),
     isDark = false,
+    glass = Color.White.copy(alpha = 0.58f),
+    glassEdge = Color.White.copy(alpha = 0.95f),
+    glowA = Color(0xFFEAA221).copy(alpha = 0.26f),
+    glowB = Color(0xFF3B0F40).copy(alpha = 0.10f),
 )
 
 enum class ThemeMode(val label: String) { SYSTEM("System"), LIGHT("Light"), DARK("Dark") }
@@ -160,6 +177,8 @@ object KeelColor {
     val OnAccent get() = palette.onAccent
     val Danger get() = palette.danger
     val OnDanger get() = palette.onDanger
+    val Glass get() = palette.glass
+    val GlassEdge get() = palette.glassEdge
 
     /** An input's edge at rest. Half-strength secondary keeps it visible without shouting. */
     val InputEdge get() = palette.textSecondary.copy(alpha = 0.5f)
@@ -282,6 +301,40 @@ fun KeelTheme(mode: ThemeMode, content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = colorSchemeFor(palette), typography = KeelTypography, shapes = KeelShapes, content = content)
 }
 
+/**
+ * The backdrop behind every screen: the page colour with two wide, soft glows in the theme's accents.
+ * It's drawn once and doesn't move, so it costs nothing while scrolling.
+ */
+fun Modifier.keelBackdrop(palette: KeelPalette): Modifier = drawBehind {
+    drawRect(palette.page)
+    val reach = maxOf(size.width, size.height)
+    drawCircle(
+        Brush.radialGradient(listOf(palette.glowA, Color.Transparent), Offset(size.width * 0.1f, size.height * 0.02f), reach * 0.75f),
+        radius = reach * 0.75f,
+        center = Offset(size.width * 0.1f, size.height * 0.02f),
+    )
+    drawCircle(
+        Brush.radialGradient(listOf(palette.glowB, Color.Transparent), Offset(size.width * 0.95f, size.height * 0.85f), reach * 0.7f),
+        radius = reach * 0.7f,
+        center = Offset(size.width * 0.95f, size.height * 0.85f),
+    )
+}
+
+/** A frosted-glass surface: see-through fill, a faint sheen at the top, and an edge that catches light. */
+fun Modifier.glass(shape: androidx.compose.ui.graphics.Shape): Modifier = this
+    .clip(shape)
+    .drawBehind {
+        drawRect(KeelColor.Glass)
+        drawRect(Brush.verticalGradient(listOf(KeelColor.GlassEdge.copy(alpha = KeelColor.GlassEdge.alpha * 0.25f), Color.Transparent), endY = size.height * 0.5f))
+    }
+    .border(
+        BorderStroke(
+            1.dp,
+            Brush.verticalGradient(listOf(KeelColor.GlassEdge, KeelColor.GlassEdge.copy(alpha = KeelColor.GlassEdge.alpha * 0.2f))),
+        ),
+        shape,
+    )
+
 /** The press response every tappable thing shares. Disabled controls never scale. */
 @Composable
 fun Modifier.pressScale(source: MutableInteractionSource, enabled: Boolean = true): Modifier {
@@ -378,7 +431,8 @@ fun KeelChip(selected: Boolean, onClick: () -> Unit, pending: Boolean = false, l
     val spec = tween<Float>(KeelMotion.STATE_MS, easing = KeelMotion.EaseOut)
     val chosen by animateFloatAsState(if (selected) 1f else 0f, spec, label = "chipSelected")
     val later by animateFloatAsState(if (pending && !selected) 1f else 0f, spec, label = "chipPending")
-    val edge = lerp(lerp(KeelColor.Elevated, KeelColor.TextSecondary, later), KeelColor.Accent, chosen)
+    // On glass, a resting edge needs to be a see-through line, not a flat grey that vanishes into the card.
+    val edge = lerp(lerp(KeelColor.TextSecondary.copy(alpha = 0.32f), KeelColor.TextSecondary, later), KeelColor.Accent, chosen)
     val text = lerp(KeelColor.TextSecondary, KeelColor.Text, maxOf(chosen, later))
     Box(
         Modifier

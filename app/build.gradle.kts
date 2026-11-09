@@ -10,8 +10,8 @@ android {
         applicationId = "dev.keel.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.1.0"
+        versionCode = 4
+        versionName = "1.2.0"
         ndk { abiFilters += "arm64-v8a" }
     }
     buildTypes {
@@ -54,4 +54,6 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.13.0")
+    // Real frosted-glass blur behind the tab bar. It draws only; it adds no permissions.
+    implementation("dev.chrisbanes.haze:haze:1.7.2")
 }

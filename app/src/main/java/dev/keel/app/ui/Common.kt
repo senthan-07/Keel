@@ -35,12 +35,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.keel.app.data.Repo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+/** Height of the frosted tab bar floating over the bottom of the screen. Zero where there's no bar. */
+val LocalBottomBar = staticCompositionLocalOf { 0.dp }
 
 /** Loads off the main thread, and reloads whenever the model refreshes. Null until the first load. */
 @Composable
@@ -64,7 +68,8 @@ fun Page(
             // Edge-to-edge windows aren't resized for the keyboard, so make room for it here.
             .imePadding()
             .verticalScroll(rememberScrollState())
-            .padding(start = KeelSpace.Gutter, end = KeelSpace.Gutter, top = 20.dp, bottom = 32.dp),
+            // The tab bar floats over the page, so the last card scrolls clear of it.
+            .padding(start = KeelSpace.Gutter, end = KeelSpace.Gutter, top = 20.dp, bottom = 32.dp + LocalBottomBar.current),
         verticalArrangement = Arrangement.spacedBy(KeelSpace.Item),
     ) {
         Column(Modifier.padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -96,7 +101,7 @@ fun SectionTitle(text: String) {
     )
 }
 
-/** The one card. Depth comes from the step up in surface colour, so it needs no border or shadow. */
+/** The one card, in frosted glass over the backdrop's glow. */
 @Composable
 fun Panel(onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     val source = remember { MutableInteractionSource() }
@@ -109,8 +114,7 @@ fun Panel(onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> 
     Column(
         press
             .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
-            .background(KeelColor.Surface)
+            .glass(MaterialTheme.shapes.large)
             .then(tap)
             .padding(KeelSpace.CardPadding),
         verticalArrangement = Arrangement.spacedBy(10.dp),

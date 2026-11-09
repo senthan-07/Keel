@@ -218,3 +218,20 @@ Run on the optimised release build under the separate "Keel check" identity, on 
 **Not seen on the phone, because it needs real days to pass:** a missed day resetting the streak, and a habit finishing. Both are covered by unit tests only.
 
 Habits don't unlock Task-locked apps and don't send reminders.
+
+## Screen time, plainer Rules and glass design (2026-11-09)
+
+Run on the optimised release build under the separate "Keel check" identity, on Samsung.
+
+| Check | Result |
+|---|---|
+| Unit tests | 116 of 116 pass, including 9 for screen time: hour and day splits, midnight, a fair comparison with last week, exclusions, busiest stretch over midnight |
+| Lint, no-internet check | No errors; no network permission, with the Haze blur library added |
+| Day and week charts | Show, switch, and step back to earlier periods; tapping a bar reads out its time |
+| App list and app page | Ranked with icons; an app's own chart; "Add a rule" works |
+| Rules wording | Shows the real Monday date; the explainer opens; an easier change shows its date, and "Keep current setting" cancels it |
+| Glass look | Dark and light viewed; the tab bar blurs what scrolls under it |
+
+**Found and fixed during the check:** titles turned black in dark mode once the backdrop became see-through, and unselected chip outlines vanished on glass.
+
+**Not checked:** Android 10 and 11, where the bar falls back to a plain tint instead of a blur, and how the charts look after several weeks of data.

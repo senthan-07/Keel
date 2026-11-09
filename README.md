@@ -59,6 +59,7 @@ See `TODO.md` for what's left.
 - **Rules:** pause, time limit, task-locked and Sprint, with commitment rules, for whole apps or YouTube Shorts
 - **Plans:** Horizons, Today with deadlines, imported Markdown plans, typed money goals
 - **Habits:** a daily tick for the months or years you choose, with a strict streak that resets on a missed day
+- **Screen time:** day and week charts, the busiest time of day, change since last week, and a page per app
 - **Review:** abandoned opens, weekly check-in, time budgets, a self-set time-to-money rule, and an on and off experiment
 - **Your data:** live privacy check, backup with an optional weekly automatic copy, restore, export and delete
 

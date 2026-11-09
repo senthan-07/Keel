@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
@@ -47,6 +48,7 @@ import dev.keel.domain.RuleSetting
 import dev.keel.domain.WeekStats
 import dev.keel.domain.daysDoneInLast30
 import dev.keel.domain.endSprintEarly
+import dev.keel.domain.nextWeekStart
 import dev.keel.domain.startSprint
 import dev.keel.domain.reviewWeekDue
 import dev.keel.domain.weekStart
@@ -67,8 +69,10 @@ fun RulesScreen(model: AppModel) {
     val context = LocalContext.current
     val rules by loadState(model) { rules() }
     var adding by remember { mutableStateOf(false) }
-    Page("Rules", "Tightening applies now. Loosening waits until next Monday.") {
+    val monday = dayName(nextWeekStart(System.currentTimeMillis(), ZoneId.systemDefault()))
+    Page("Rules", "Choose which apps Keel pauses, and how.") {
         val loaded = rules ?: return@Page
+        HowChangesWork(monday)
         SprintPanel(model)
         loaded.forEach { RuleCard(model, it) }
         KeelSecondaryButton({ adding = true }, Modifier.fillMaxWidth()) { Text("Add apps") }
@@ -89,7 +93,35 @@ fun RulesScreen(model: AppModel) {
     }
 }
 
-private fun describe(setting: RuleSetting): String = when {
+/**
+ * The commitment rule in plain words, with the real date, because "next week" left people looking for a
+ * week setting that doesn't exist.
+ */
+@Composable
+private fun HowChangesWork(monday: String) {
+    var open by remember { mutableStateOf(false) }
+    Panel(onClick = { open = !open }) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("How changes work", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            Text(if (open) "Hide" else "Show", style = MaterialTheme.typography.labelMedium, color = KeelColor.TextSecondary)
+        }
+        StatusLine("Stricter: works straight away.")
+        StatusLine("Easier: starts on $monday.", tone = Tone.Neutral)
+        if (open) {
+            Muted("Weeks start on Monday. Making a rule easier waits until then, so a weak moment can't undo a decision you made with a clear head. There's no setting for this, on purpose.")
+            Muted("Changed your mind? Tap \"Keep current setting\" on the rule and the waiting change is cancelled.")
+            Muted("A rule you've just added can be changed freely for its first 10 minutes, while you set it up.")
+        }
+    }
+}
+
+private fun modeHelp(mode: RuleMode): String = when (mode) {
+    RuleMode.PAUSE -> "Each time you open it, you wait a few seconds and see your next step first. You can still open it after."
+    RuleMode.LIMIT -> "Use it freely for a set time each day. After that, every open gets a pause."
+    RuleMode.TASK_LOCK -> "Stays locked until everything on Today is ticked off. In an emergency, you can still get in after a $EMERGENCY_DELAY_SECONDS-second wait."
+}
+
+internal fun describe(setting: RuleSetting): String = when {
     !setting.enabled -> "Off"
     setting.mode == RuleMode.LIMIT -> "Free for ${setting.dailyLimitMinutes} min a day, then a pause"
     setting.mode == RuleMode.TASK_LOCK -> "Locked until today's list is done"
@@ -123,39 +155,56 @@ private fun RuleCard(model: AppModel, rule: Rule) {
                 )
             }
         }
+        Muted(modeHelp(current.mode))
         when (current.mode) {
             RuleMode.LIMIT -> {
-                Muted("Minutes a day")
+                Text("Free minutes a day", style = MaterialTheme.typography.labelMedium, color = KeelColor.TextSecondary)
                 ChipRow {
                     LIMITS.forEach { minutes ->
                         KeelChip(
                             selected = minutes == current.dailyLimitMinutes,
                             pending = later?.mode == RuleMode.LIMIT && later.dailyLimitMinutes == minutes,
                             onClick = { model.act { changeRule(rule, current.copy(dailyLimitMinutes = minutes)) } },
-                            label = { Text("$minutes", maxLines = 1) },
+                            label = { Text("$minutes min", maxLines = 1) },
                         )
                     }
                 }
             }
-            RuleMode.PAUSE -> ChipRow {
+            RuleMode.PAUSE -> {
+                Text("How long to wait", style = MaterialTheme.typography.labelMedium, color = KeelColor.TextSecondary)
+                ChipRow {
                 DELAYS.forEach { delay ->
                     KeelChip(
                         selected = delay == current.delaySeconds,
                         pending = later?.mode == RuleMode.PAUSE && later.delaySeconds == delay,
                         onClick = { model.act { changeRule(rule, current.copy(delaySeconds = delay)) } },
-                        label = { Text("${delay}s", maxLines = 1) },
+                        label = { Text("$delay sec", maxLines = 1) },
                     )
                 }
+                }
             }
-            RuleMode.TASK_LOCK -> Muted("You can still get through after a $EMERGENCY_DELAY_SECONDS-second wait.")
+            RuleMode.TASK_LOCK -> Unit
         }
-        if (System.currentTimeMillis() - rule.createdAt < NEW_RULE_GRACE_MILLIS) {
-            Muted("New rule: changes apply straight away for the first 10 minutes.")
+        val age = System.currentTimeMillis() - rule.createdAt
+        if (age < NEW_RULE_GRACE_MILLIS) {
+            val left = ((NEW_RULE_GRACE_MILLIS - age) / 60_000 + 1).coerceAtMost(10)
+            Muted("Just added, so every change works straight away for about $left more ${if (left == 1L) "minute" else "minutes"}.")
         }
         val pending = rule.state.pending
         val at = rule.state.pendingAt
         if (pending != null && at != null) {
-            StatusLine("Changes to \"${describe(pending)}\" on ${dayName(at)}", tone = Tone.Neutral)
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(KeelColor.Elevated.copy(alpha = 0.6f))
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text("Easier setting starts ${dayName(at)}", style = MaterialTheme.typography.titleSmall)
+                Muted("From then: ${describe(pending)}. Until then it stays as it is now.")
+                KeelTextButton({ model.act { changeRule(rule, current) } }) { Text("Keep current setting") }
+            }
         }
         }
     }
@@ -180,11 +229,11 @@ private fun SprintPanel(model: AppModel) {
             Muted("Every rule that's on waits $EMERGENCY_DELAY_SECONDS seconds, including time limits and finished lists.")
             KeelSecondaryButton({ ending = true }, Modifier.fillMaxWidth()) { Text("End early") }
         } else {
-            Muted("Choose how many days to make every rule that's on stricter. You can still get through after a $EMERGENCY_DELAY_SECONDS-second wait.")
+            Muted("Make every rule strict for a few days, like before an exam. Each app on your list waits $EMERGENCY_DELAY_SECONDS seconds before it opens.")
         }
         ChipRow {
             SPRINT_DAYS.forEach { days ->
-                KeelChip(selected = false, onClick = { startDays = days }, label = { Text("${days}d", maxLines = 1) })
+                KeelChip(selected = false, onClick = { startDays = days }, label = { Text(if (days == 1) "1 day" else "$days days", maxLines = 1) })
             }
         }
     }
@@ -192,7 +241,18 @@ private fun SprintPanel(model: AppModel) {
         AlertDialog(
             onDismissRequest = { startDays = null },
             title = { Text("Start a Sprint for ${if (days == 1) "1 day" else "$days days"}?") },
-            text = { Text("It starts now. Ending it early only takes effect next Monday, because a commitment is easiest to break on impulse.") },
+            text = {
+                val now2 = System.currentTimeMillis()
+                val endsAt = startSprint(until, days, now2)
+                val earliest = endSprintEarly(endsAt, now2, zone)
+                Text(
+                    if (earliest < endsAt) {
+                        "It starts now and runs until ${dayName(endsAt)}. Stopping early takes effect on ${dayName(earliest)} at the soonest, so a weak moment can't end it."
+                    } else {
+                        "It starts now and runs until ${dayName(endsAt)}. It can't be stopped early, so a weak moment can't end it."
+                    },
+                )
+            },
             confirmButton = {
                 KeelTextButton({
                     startDays = null
@@ -207,7 +267,7 @@ private fun SprintPanel(model: AppModel) {
         AlertDialog(
             onDismissRequest = { ending = false },
             title = { Text("End this Sprint early?") },
-            text = { Text("It will end on ${dayName(endsAt)}.") },
+            text = { Text("It keeps running until ${dayName(endsAt)}, then ends.") },
             confirmButton = {
                 KeelTextButton({
                     ending = false
@@ -329,10 +389,19 @@ fun ReviewScreen(model: AppModel) {
     val data by loadState(model) { loadReview() }
     var ruleChange by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
+    var openApp by remember { mutableStateOf<String?>(null) }
+    openApp?.let { pkg ->
+        BackHandler { openApp = null }
+        AppUsagePage(model, pkg) { openApp = null }
+        return
+    }
     Page("Review") {
+        SectionTitle("Screen time")
+        ScreenTimeSection(model) { openApp = it }
         val loaded = data ?: return@Page
-        val title = loaded.week.format(DateTimeFormatter.ofPattern("d MMM"))
-        Muted("Week starting $title")
+        val first = loaded.week.format(DateTimeFormatter.ofPattern("d MMM"))
+        val last = loaded.week.plusDays(6).format(DateTimeFormatter.ofPattern("d MMM"))
+        SectionTitle("Pauses, $first to $last")
         Panel {
             val percent = loaded.stats.abandonedPercent
             if (percent == null) {
@@ -366,14 +435,6 @@ fun ReviewScreen(model: AppModel) {
                 loaded.stats.reasons.entries.sortedByDescending { it.value }.forEach { ValueRow(it.key, "${it.value}") }
             }
         }
-        if (loaded.usage.isNotEmpty()) {
-            SectionTitle("Most-used apps")
-            val home = homePackage(context)
-            Panel {
-                loaded.usage.filter { it.pkg != home && it.pkg != context.packageName }.take(5)
-                    .forEach { ValueRow(appLabel(context, it.pkg), "${it.minutes} min") }
-            }
-        }
         CheckInPanel(model, weekStart(LocalDate.now()))
         TimeBudgetsSection(model, loaded.week)
         ExperimentSection(model)
@@ -390,7 +451,7 @@ fun ReviewScreen(model: AppModel) {
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Finish review") }
         } else {
-            Muted("The next review opens on Sunday.")
+            Muted("Your weekly review opens on Sunday, to look back at the week and pick one thing to change.")
         }
     }
 }
